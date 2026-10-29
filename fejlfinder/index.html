@@ -819,6 +819,22 @@ textarea{min-height:64px;resize:vertical}
 #toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--bar);color:var(--bar-fg);padding:10px 16px;border-radius:10px;z-index:4000;
   box-shadow:0 2px 12px #0006;font-size:14px;max-width:calc(100% - 32px);opacity:0;transition:opacity .2s;pointer-events:none}
 #toast.show{opacity:1}
+#geo{position:fixed;inset:0;z-index:2500;background:var(--bg);display:grid;grid-template-rows:auto minmax(0,1fr) auto;grid-template-columns:minmax(0,1fr)}
+.geo-top{background:var(--bar);color:var(--bar-fg);display:flex;align-items:center;gap:10px;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 8px) max(12px,env(safe-area-inset-right,0px)) 8px max(14px,env(safe-area-inset-left,0px))}
+.geo-top b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.geo-map{position:relative;min-height:0}
+#geomap{position:absolute;inset:0;background:#e9ecec;z-index:0}
+.cross{position:absolute;left:50%;top:50%;width:64px;height:64px;margin:-32px 0 0 -32px;z-index:500;pointer-events:none}
+.cross::before,.cross::after{content:"";position:absolute;background:#d6392f;box-shadow:0 0 0 1px #fff}
+.cross::before{left:31px;top:0;width:2px;height:64px}.cross::after{top:31px;left:0;height:2px;width:64px}
+.geo-panel{background:var(--card);padding:12px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:10px;max-height:46vh;overflow:auto;box-shadow:0 -2px 12px #0003}
+.geo-panel p{margin:0;font-size:14px}
+.geo-panel .acts{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.gpsline{font-variant-numeric:tabular-nums;color:var(--dim)}
+.refm{width:30px;height:30px;border-radius:50%;background:#1a73e8;color:#fff;font:700 14px/30px var(--font);text-align:center;border:2px solid #fff;box-shadow:0 1px 4px #0008}
+.refm.new{background:var(--accent);color:var(--accent-ink)}.refm.bad{background:var(--off)}.refm.sel{outline:3px solid var(--accent)}
+.refm.small{width:26px;height:26px;line-height:26px;font-size:13px;flex:none;display:inline-block}
+.ff-underlay{position:absolute;left:0;top:0;transform-origin:0 0;pointer-events:none;max-width:none!important;user-select:none}
 #viewer{position:fixed;inset:0;background:#000e;z-index:3500;display:flex;flex-direction:column}
 #viewer img{flex:1;min-height:0;object-fit:contain;width:100%}
 #viewer .bar{display:flex;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 8px) 12px calc(env(safe-area-inset-bottom,0px) + 8px);gap:8px}
@@ -879,6 +895,7 @@ textarea{min-height:64px;resize:vertical}
 <div id="toast"></div>
 <input type="file" id="photoInput" accept="image/*" capture="environment" hidden>
 <input type="file" id="importInput" accept=".sel,.json,application/json" hidden>
+<input type="file" id="drawInput" accept=".pdf,application/pdf,image/png,image/jpeg,image/*" hidden>
 
 <script>
 /* @preserve
@@ -890,7 +907,7 @@ textarea{min-height:64px;resize:vertical}
 </script>
 <script>
 'use strict';
-const APP_VERSION = '0.2.0';
+const APP_VERSION = '0.3.0';
 /* ============================================================
    Konstanter
    ============================================================ */
@@ -1089,7 +1106,7 @@ async function openProject(p){
   ls.set('last', P.id);
   $('#projName').textContent = P.name;
   $('#saveState').textContent = 'Gemt';
-  photoCache.clear();
+  photoCache.clear(); clearUnderlays();
   if (P.ff.view) map.setView([P.ff.view.lat, P.ff.view.lng], P.ff.view.z);
   else if (P.ff.points.length) fitAll(); else map.setView([55.95, 10.6], 7);
   render();
@@ -1150,6 +1167,7 @@ updLabelClass();
 /* ---------- tegning ---------- */
 function render(){
   if (!P) return;
+  syncUnderlays();
   renderLinks(); renderStubs(); renderPoints(); renderPend(); renderSheet();
 }
 function groupColorOfLink(l){
@@ -1274,8 +1292,10 @@ function setMode(m, opts={}){
     link: pend ? `Tryk på næste punkt. Tryk på kortet for at lave et knæk.` : 'Tryk på det første punkt',
     bearing: 'Tryk på kortet i den retning kablet går',
     addvia: 'Tryk på kortet for at sætte et knæk på forbindelsen',
+    georef: 'Tryk på luftfotoet der, hvor referencepunktet er',
   }[m];
   hint.hidden = !txt; if (txt) $('#hintText').textContent = opts.text || txt;
+  $('#hintDone').textContent = m==='georef' ? 'Annullér' : 'Færdig';
   $('#map').style.cursor = (m==='select') ? '' : 'crosshair';
   if (P) { renderPend(); renderStubs(); renderPoints(); }
 }
@@ -1299,6 +1319,8 @@ map.on('click', e => {
   } else if (mode==='addvia' && sel?.t==='l'){
     const l = lk(sel.id); if (l){ mutate(() => insertVia(l, ll)); }
     setMode('select');
+  } else if (mode==='georef'){
+    geoPicked(ll);
   } else if (mode==='select'){
     if (sel){ sel = null; render(); }
   }
@@ -1340,7 +1362,10 @@ document.querySelectorAll('.tool[data-mode]').forEach(b => b.addEventListener('c
   if (m==='link' && mode==='link'){ setMode('select'); return; }
   setMode(m);
 }));
-$('#hintDone').addEventListener('click', () => setMode('select'));
+$('#hintDone').addEventListener('click', () => {
+  if (mode==='georef' && geo){ setMode('select'); const u = ulOf(geo.id); if (u){ delete u._hide; } $('#geo').hidden = false; geo.gm.invalidateSize(); geo.state = 'source'; geoRender(); return; }
+  setMode('select');
+});
 let bearingTarget = null;
 
 /* ---------- GPS ---------- */
@@ -1848,7 +1873,8 @@ async function projectMenu(){
 async function projectToSel(){
   await saveNow();
   const photos = {};
-  for (const ph of await dbPhotosOf(P.id)) photos[ph.id] = await blobToDataURL(ph.data);
+  const used = new Set([...P.ff.points.flatMap(p => p.photos), ...(P.ff.underlays||[]).map(u => u.img)]);
+  for (const ph of await dbPhotosOf(P.id)) if (used.has(ph.id)) photos[ph.id] = await blobToDataURL(ph.data);
   return {format:'silvert-el', v:1, name:P.name, created:P.created, updated:P.updated, shelly:null, eltegner:null,
     fejlfinder:{...clone(P.ff), id:P.id, photos}};
 }
@@ -1890,7 +1916,8 @@ function loadScript(src){
   });
 }
 function pdfDialog(){
-  const o = Object.assign({paper:'A4', orient:'l', area:'all', bg:baseId!=='none', list:true, photos:true}, ls.get('pdf', {}));
+  const o = Object.assign({paper:'A4', orient:'l', area:'all', bg:baseId!=='none', ul:true, list:true, photos:true}, ls.get('pdf', {}));
+  const nUl = (P.ff.underlays||[]).filter(u => u.tf && u.visible).length;
   const nPhotos = P.ff.points.reduce((s, p) => s + p.photos.length, 0);
   dialog((d, close) => {
     const pageIco = (w, hh) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="${12-w/2}" y="${12-hh/2}" width="${w}" height="${hh}" rx="1.5"/></svg>`;
@@ -1927,6 +1954,7 @@ function pdfDialog(){
       box,
       h('div', {class:'row'}, h('label', {}, 'Udsnit'), h('div', {class:'grow'}, area)),
       chk('bg', 'Luftfoto som baggrund', baseId==='none'),
+      chk('ul', `Egne tegninger (${nUl})`, !nUl),
       chk('list', 'Punktliste og forbindelser (A4 lodret)'),
       chk('photos', `Fotos (${nPhotos})`, !nPhotos),
       bar, status,
@@ -2001,31 +2029,51 @@ async function makePdf(o, progress){
   const toMM = ll => { const p = P0(ll); return [fx + fw/2 + (p.x - cx)*s, fy + fh/2 + (p.y - cy)*s]; };
   const mPerMM = mPerW / s;
 
-  // baggrund
-  let bgNote = '';
-  if (o.bg && BASES[baseId].url){
+  // baggrund: luftfoto og/eller egne tegninger
+  let bgNote = '', bgDone = false;
+  const ulsOn = o.ul ? (P.ff.underlays||[]).filter(u => u.tf && u.visible) : [];
+  const useTiles = o.bg && !!BASES[baseId].url;
+  if (useTiles || ulsOn.length){
     const B = BASES[baseId];
     let z = Math.round(Math.log2((fw/25.4*200) / (fw/s)));
-    z = Math.max(1, Math.min(B.maxNative, z));
+    z = Math.max(1, Math.min(useTiles ? B.maxNative : 21, z));
     const dims = zz => { const k = 2**zz; return {k, x0:(cx - fw/s/2)*k, y0:(cy - fh/s/2)*k, wpx:fw/s*k, hpx:fh/s*k}; };
     let g = dims(z);
-    while (z > 1 && (Math.max(g.wpx, g.hpx) > 4096 || Math.ceil(g.wpx/256+1)*Math.ceil(g.hpx/256+1) > 360)){ z--; g = dims(z); }
+    while (z > 1 && (Math.max(g.wpx, g.hpx) > 4096 || (useTiles && Math.ceil(g.wpx/256+1)*Math.ceil(g.hpx/256+1) > 360))){ z--; g = dims(z); }
     const cv = document.createElement('canvas'); cv.width = Math.round(g.wpx); cv.height = Math.round(g.hpx);
-    const ctx = cv.getContext('2d'); ctx.fillStyle = '#d5dbde'; ctx.fillRect(0, 0, cv.width, cv.height);
-    const tx0 = Math.floor(g.x0/256), ty0 = Math.floor(g.y0/256), tx1 = Math.floor((g.x0+g.wpx)/256), ty1 = Math.floor((g.y0+g.hpx)/256);
-    const jobs = []; for (let x = tx0; x <= tx1; x++) for (let y = ty0; y <= ty1; y++) jobs.push({x, y});
-    let done = 0, ok = 0, i = 0;
-    const worker = async () => { while (i < jobs.length){ const t = jobs[i++];
-      try{ const bm = await tileBitmap(baseId, z, t.x, t.y); ctx.drawImage(bm, t.x*256 - g.x0, t.y*256 - g.y0, 256, 256); ok++; }catch{}
-      done++; progress(`Henter luftfoto … ${done} af ${jobs.length}`, 0.05 + 0.6*done/jobs.length); } };
-    await Promise.all([worker(), worker(), worker(), worker()]);
-    if (ok){
-      ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(0, 0, cv.width, cv.height);
-      doc.addImage(cv.toDataURL('image/jpeg', 0.82), 'JPEG', fx, fy, fw, fh, 'bg', 'FAST');
-      bgNote = B.attr + (ok < jobs.length ? ` · ${jobs.length - ok} kortbilleder manglede` : '');
-    } else bgNote = 'Luftfotoet kunne ikke hentes (ingen forbindelse?)';
+    const ctx = cv.getContext('2d'); ctx.fillStyle = useTiles ? '#d5dbde' : '#ffffff'; ctx.fillRect(0, 0, cv.width, cv.height);
+    let ok = 0, jobsN = 0;
+    if (useTiles){
+      const tx0 = Math.floor(g.x0/256), ty0 = Math.floor(g.y0/256), tx1 = Math.floor((g.x0+g.wpx)/256), ty1 = Math.floor((g.y0+g.hpx)/256);
+      const jobs = []; for (let x = tx0; x <= tx1; x++) for (let y = ty0; y <= ty1; y++) jobs.push({x, y});
+      jobsN = jobs.length;
+      let done = 0, i = 0;
+      const worker = async () => { while (i < jobs.length){ const t = jobs[i++];
+        try{ const bm = await tileBitmap(baseId, z, t.x, t.y); ctx.drawImage(bm, t.x*256 - g.x0, t.y*256 - g.y0, 256, 256); ok++; }catch{}
+        done++; progress(`Henter luftfoto … ${done} af ${jobs.length}`, 0.05 + 0.55*done/jobs.length); } };
+      await Promise.all([worker(), worker(), worker(), worker()]);
+      if (ok) ctx.fillStyle = 'rgba(255,255,255,0.18)', ctx.fillRect(0, 0, cv.width, cv.height);
+    }
+    // egne tegninger: billedets pixel -> kanvas-pixel via tre hjørner
+    const notes = [];
+    for (const u of ulsOn){
+      progress(`Lægger ${u.name} ind …`, 0.62);
+      const r = await dbGet('photos', u.img).catch(() => null); if (!r) continue;
+      const bm = await createImageBitmap(r.data);
+      const C = (x, y) => { const p = map.project(uvToLatLng(u, x, y), z); return [p.x - g.x0, p.y - g.y0]; };
+      const p0 = C(0, 0), p1 = C(u.w, 0), p2 = C(0, u.h);
+      ctx.save(); ctx.globalAlpha = useTiles && ok ? (u.opacity ?? 0.8) : 1;
+      ctx.setTransform((p1[0]-p0[0])/u.w, (p1[1]-p0[1])/u.w, (p2[0]-p0[0])/u.h, (p2[1]-p0[1])/u.h, p0[0], p0[1]);
+      ctx.drawImage(bm, 0, 0, u.w, u.h); ctx.restore();
+      notes.push(u.name);
+    }
+    if (ok || notes.length){
+      doc.addImage(cv.toDataURL('image/jpeg', 0.85), 'JPEG', fx, fy, fw, fh, 'bg', 'FAST'); bgDone = true;
+    }
+    bgNote = [useTiles ? (ok ? B.attr + (ok < jobsN ? ` · ${jobsN - ok} kortbilleder manglede` : '') : 'Luftfotoet kunne ikke hentes (ingen forbindelse?)') : '',
+      notes.length ? 'Tegning: ' + notes.join(', ') : ''].filter(Boolean).join(' · ');
   }
-  if (!bgNote || /kunne ikke/.test(bgNote)){ doc.setFillColor('#f3f5f4'); doc.rect(fx, fy, fw, fh, 'F'); }
+  if (!bgDone){ doc.setFillColor('#f3f5f4'); doc.rect(fx, fy, fw, fh, 'F'); }
   progress('Tegner oversigten …', 0.7);
 
   // tegn i rammen
@@ -2235,6 +2283,248 @@ $('#importInput').addEventListener('change', async ev => {
   }catch(e){ toast('Kunne ikke læse filen: ' + e.message, 5000); }
 });
 
+/* ============================================================
+   Egne tegninger (PDF, JPG, PNG) placeret med referencepunkter
+   ============================================================ */
+map.createPane('underlay'); map.getPane('underlay').style.zIndex = 250; map.getPane('underlay').style.pointerEvents = 'none';
+const ulOf = id => (P.ff.underlays||[]).find(u => u.id===id);
+const merc = ll => L.CRS.EPSG3857.project(L.latLng(ll[0], ll[1]));
+function uvToLatLng(u, x, y){
+  const t = u.tf; return L.CRS.EPSG3857.unproject(L.point(t.A*x + t.B*y + t.C, t.D*x + t.E*y + t.F));
+}
+// Vægtet mindste kvadraters similaritet (skala, drejning, flytning): tegningens pixel (u,v) -> Web Mercator (X,Y)
+function fitSim(refs){
+  const ps = refs.map(r => { const m = merc([r.lat, r.lng]); return {x:r.u, y:-r.v, X:m.x, Y:m.y, w:1/Math.max(r.acc||3, 0.5)**2}; });
+  const W = ps.reduce((s, p) => s + p.w, 0);
+  const cx = ps.reduce((s, p) => s + p.w*p.x, 0)/W, cy = ps.reduce((s, p) => s + p.w*p.y, 0)/W;
+  const cX = ps.reduce((s, p) => s + p.w*p.X, 0)/W, cY = ps.reduce((s, p) => s + p.w*p.Y, 0)/W;
+  let S = 0, a = 0, b = 0;
+  for (const p of ps){ const dx = p.x-cx, dy = p.y-cy, dX = p.X-cX, dY = p.Y-cY; S += p.w*(dx*dx+dy*dy); a += p.w*(dx*dX+dy*dY); b += p.w*(dx*dY-dy*dX); }
+  if (S < 1e-6) return null;
+  a /= S; b /= S;
+  return {A:a, B:b, C:cX - a*cx + b*cy, D:b, E:-a, F:cY - b*cx - a*cy};
+}
+function geoStats(u){
+  if (!u.tf) return null;
+  const lat = u.refs[0]?.lat ?? 55.7, cosL = Math.cos(lat*Math.PI/180);
+  const res = u.refs.map(r => { const m = merc([r.lat, r.lng]), X = u.tf.A*r.u + u.tf.B*r.v + u.tf.C, Y = u.tf.D*r.u + u.tf.E*r.v + u.tf.F; return Math.hypot(X - m.x, Y - m.y)*cosL; });
+  const mpp = Math.hypot(u.tf.A, u.tf.B)*cosL; // meter pr. pixel
+  const rot = (Math.atan2(u.tf.B, u.tf.A)*180/Math.PI + 360) % 360;
+  const mean = res.length > 2 ? res.reduce((s, r) => s + r, 0)/res.length : null;
+  const paper = u.pxPerMM ? mpp*1000*u.pxPerMM : null;
+  return {res, mpp, rot, mean, paper};
+}
+function refit(u){ u.tf = u.refs.length >= 2 ? fitSim(u.refs) : null; }
+
+const DrawingLayer = L.Layer.extend({
+  initialize(u, url){ this.u = u; this.url = url; },
+  onAdd(m){
+    const img = this._img = L.DomUtil.create('img', 'ff-underlay leaflet-zoom-animated');
+    img.src = this.url; img.alt = ''; img.draggable = false;
+    m.getPane('underlay').appendChild(img);
+    m.on('zoomanim', this._anim, this); m.on('viewreset zoomend', this.update, this);
+    this.update();
+  },
+  onRemove(m){ this._img.remove(); m.off('zoomanim', this._anim, this); m.off('viewreset zoomend', this.update, this); },
+  _matrix(toLayer){
+    const u = this.u, p0 = toLayer(uvToLatLng(u, 0, 0)), p1 = toLayer(uvToLatLng(u, u.w, 0)), p2 = toLayer(uvToLatLng(u, 0, u.h));
+    return `matrix(${(p1.x-p0.x)/u.w},${(p1.y-p0.y)/u.w},${(p2.x-p0.x)/u.h},${(p2.y-p0.y)/u.h},${p0.x},${p0.y})`;
+  },
+  update(){ if (!this._map || !this.u.tf) return; this._img.style.opacity = this.u.opacity ?? 0.8; this._img.style.transform = this._matrix(ll => this._map.latLngToLayerPoint(ll)); },
+  _anim(e){ this._img.style.transform = this._matrix(ll => this._map._latLngToNewLayerPoint(ll, e.zoom, e.center)); }
+});
+const ulLayers = new Map();
+async function syncUnderlays(){
+  const want = new Set();
+  for (const u of (P?.ff.underlays||[])){
+    if (!u.visible || !u.tf || u._hide) continue;
+    want.add(u.id);
+    let ly = ulLayers.get(u.id);
+    if (ly && ly.u !== u){ ly.u = u; }
+    if (!ly){
+      const url = await loadPhoto(u.img); if (!url) continue;
+      if (ulLayers.has(u.id)) continue;
+      ly = new DrawingLayer(u, url); ulLayers.set(u.id, ly); ly.addTo(map);
+    }
+    ly.update();
+  }
+  for (const [id, ly] of ulLayers) if (!want.has(id)){ map.removeLayer(ly); ulLayers.delete(id); }
+}
+function clearUnderlays(){ for (const ly of ulLayers.values()) map.removeLayer(ly); ulLayers.clear(); }
+function fitUnderlay(u){
+  if (!u.tf) return;
+  map.fitBounds(L.latLngBounds([[0,0],[u.w,0],[0,u.h],[u.w,u.h]].map(([x,y]) => uvToLatLng(u, x, y))), {padding:[30,30]});
+}
+
+/* ---------- indlæsning ---------- */
+$('#drawInput').addEventListener('change', async ev => {
+  const f = ev.target.files[0]; if (!f || !P) return;
+  try{
+    let blob, w, hh, pxPerMM = null, name = f.name.replace(/\.[^.]+$/, '');
+    if (/pdf$/i.test(f.type) || /\.pdf$/i.test(f.name)){
+      toast('Læser PDF …', 8000);
+      await loadScript('pdf.min.js');
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
+      const pdf = await pdfjsLib.getDocument({data:new Uint8Array(await f.arrayBuffer()), isEvalSupported:false}).promise;
+      let n = 1;
+      if (pdf.numPages > 1){
+        const v = await askText(`PDF'en har ${pdf.numPages} sider. Hvilken side?`, '1', '1', 'Indlæs');
+        if (v==null) return;
+        n = Math.min(pdf.numPages, Math.max(1, parseInt(v, 10) || 1));
+        name += ` (side ${n})`;
+      }
+      const page = await pdf.getPage(n), v1 = page.getViewport({scale:1});
+      const scale = Math.min(5, 4096/Math.max(v1.width, v1.height)), vp = page.getViewport({scale});
+      const cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+      const ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+      await page.render({canvasContext:ctx, viewport:vp, background:'#ffffff'}).promise;
+      blob = await new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('kunne ikke kode billedet')), 'image/jpeg', 0.9));
+      w = cv.width; hh = cv.height; pxPerMM = scale*72/25.4;
+      pdf.destroy();
+    } else if (/^image\//.test(f.type)){
+      blob = await resizeImage(f, 4096, 0.9);
+      const bm = await createImageBitmap(blob); w = bm.width; hh = bm.height;
+    } else { toast('Vælg en PDF, JPG eller PNG'); return; }
+    const img = uid();
+    await dbPut('photos', {id:img, project:P.id, data:blob, t:Date.now()});
+    const u = {id:uid(), img, name, w, h:hh, pxPerMM, refs:[], tf:null, opacity:0.8, visible:true, t:Date.now()};
+    mutate(() => { P.ff.underlays = P.ff.underlays || []; P.ff.underlays.push(u); });
+    geoEditor(u.id);
+  }catch(e){ console.error(e); toast('Kunne ikke indlæse tegningen: ' + e.message, 6000); }
+});
+function pickDrawing(){ $('#drawInput').value = ''; $('#drawInput').click(); }
+
+/* ---------- placering med referencepunkter ---------- */
+let geo = null; // {u, gm, img, markers, state, pending:{u,v}, watch}
+async function geoEditor(id){
+  const u = ulOf(id); if (!u) return;
+  const url = await loadPhoto(u.img); if (!url){ toast('Tegningen mangler på enheden'); return; }
+  closeGeo();
+  const el = h('div', {id:'geo'},
+    h('div', {class:'geo-top'}, h('b', {}, `Placér ${u.name}`), h('button', {class:'hbtn', onclick:() => closeGeo(true)}, 'Færdig')),
+    h('div', {class:'geo-map'}, h('div', {id:'geomap'}), h('div', {class:'cross', hidden:true})),
+    h('div', {class:'geo-panel', id:'geoPanel'}));
+  document.body.append(el);
+  const gm = L.map('geomap', {crs:L.CRS.Simple, minZoom:-6, maxZoom:4, zoomSnap:0.25, zoomControl:false, attributionControl:false});
+  const bounds = [[-u.h, 0], [0, u.w]];
+  L.imageOverlay(url, bounds).addTo(gm);
+  gm.fitBounds(bounds);
+  geo = {id, gm, markers:L.layerGroup().addTo(gm), state:'list', pending:null, sel:null};
+  gm.on('click', e => { if (geo.state==='place') gm.panTo(e.latlng); });
+  geoRender();
+}
+function closeGeo(done){
+  if (!geo) { $('#geo')?.remove(); return; }
+  geoStopGps();
+  const u = ulOf(geo.id);
+  geo.gm.remove(); $('#geo')?.remove(); geo = null;
+  if (u){ delete u._hide; syncUnderlays(); if (done && u.tf){ fitUnderlay(u); toast('Tegningen er lagt på kortet'); } }
+}
+function geoRender(){
+  if (!geo) return;
+  const u = ulOf(geo.id); if (!u){ closeGeo(); return; }
+  const st = geoStats(u);
+  geo.markers.clearLayers();
+  u.refs.forEach((r, i) => {
+    const bad = st && st.mean!=null && st.res[i] > Math.max(3, 2*(r.acc||3));
+    const m = L.marker([-r.v, r.u], {draggable:geo.state==='list', icon:L.divIcon({className:'', html:`<div class="refm${bad?' bad':''}${geo.sel===i?' sel':''}">${i+1}</div>`, iconSize:[30,30], iconAnchor:[15,15]})}).addTo(geo.markers);
+    m.on('click', () => { geo.sel = geo.sel===i ? null : i; geoRender(); });
+    m.on('dragend', ev => { const ll = ev.target.getLatLng(); mutate(() => { r.u = ll.lng; r.v = -ll.lat; refit(u); }); geoRender(); });
+  });
+  if (geo.pending) L.marker([-geo.pending.v, geo.pending.u], {interactive:false, icon:L.divIcon({className:'', html:`<div class="refm new">${u.refs.length+1}</div>`, iconSize:[30,30], iconAnchor:[15,15]})}).addTo(geo.markers);
+  $('#geo .cross').hidden = geo.state!=='place';
+  const pn = $('#geoPanel'); pn.innerHTML = '';
+  if (geo.state==='place'){
+    pn.append(h('p', {}, h('b', {}, `Referencepunkt ${u.refs.length+1}. `), 'Flyt tegningen, så korset står præcis der, hvor du står. Du kan også trykke på stedet.'),
+      h('div', {class:'acts'}, h('button', {class:'btn', onclick:() => { geo.state = 'list'; geoRender(); }}, 'Annullér'),
+        h('button', {class:'btn pri', onclick:() => { const c = geo.gm.getCenter(); geo.pending = {u:c.lng, v:-c.lat}; geo.state = 'source'; geoRender(); }}, 'Her står jeg')));
+    return;
+  }
+  if (geo.state==='source' || geo.state==='gps'){
+    const gs = geo.gpsInfo;
+    pn.append(h('p', {}, h('b', {}, `Referencepunkt ${u.refs.length+1}. `), 'Hvor er punktet i virkeligheden?'),
+      geo.state==='gps' ? h('p', {class:'gpsline'}, gs?.n ? `Måler … ${gs.left} s · ${gs.n} måling${gs.n===1?'':'er'} · ±${fmtNum(gs.acc, 1)} m` : 'Venter på GPS …') : null,
+      h('div', {class:'acts'},
+        h('button', {class:'btn', onclick:() => { geoStopGps(); geo.pending = null; geo.state = 'list'; geoRender(); }}, 'Annullér'),
+        h('button', {class:'btn', onclick:() => geoPickOnMap()}, 'Vælg på luftfotoet'),
+        geo.state==='gps'
+          ? h('button', {class:'btn pri', disabled:!gs?.n, onclick:() => geoFinishGps()}, 'Brug nu')
+          : h('button', {class:'btn pri', onclick:() => geoStartGps()}, 'Brug min GPS-position')));
+    return;
+  }
+  // liste
+  const rows = h('div', {class:'plist'});
+  u.refs.forEach((r, i) => {
+    const res = st?.res[i], bad = st && st.mean!=null && res > Math.max(3, 2*(r.acc||3));
+    rows.append(h('div', {class:'pitem' + (geo.sel===i?' cur':'')},
+      h('span', {class:'refm small' + (bad?' bad':'')}, String(i+1)),
+      h('div', {class:'grow'}, h('b', {}, r.src==='gps' ? `GPS ±${fmtNum(r.acc, 1)} m` : 'Valgt på luftfotoet'),
+        h('small', {}, st && st.mean!=null ? `afviger ${fmtNum(res, 1)} m` + (bad ? ' – tjek punktet' : '') : fmtTime(r.t))),
+      h('button', {class:'x', title:'Slet punktet', onclick:() => { mutate(() => { u.refs.splice(i, 1); refit(u); }); geo.sel = null; geoRender(); },
+        html:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>'})));
+  });
+  let info;
+  if (!u.refs.length) info = 'Gå hen til et sted, du kan genkende på tegningen (et hjørne, en mast, en dør), og placér dig på tegningen. Gentag 2–4 steder, gerne langt fra hinanden.';
+  else if (u.refs.length===1) info = 'Ét punkt mere, så lægges tegningen på kortet. Vælg et sted langt fra det første.';
+  else {
+    const d = Math.hypot(u.refs[0].u - u.refs[1].u, u.refs[0].v - u.refs[1].v) * (st?.mpp||0);
+    info = [st ? `1 pixel på tegningen er ${fmtNum(st.mpp*100, 1)} cm` + (st.paper ? `, svarer til ca. 1:${Math.round(st.paper/10)*10} på papiret` : '') + `. Drejet ${Math.round(st.rot)}°.` : '',
+      st?.mean!=null ? `Gennemsnitlig afvigelse ${fmtNum(st.mean, 1)} m.` : 'Med to punkter kan afvigelsen ikke ses. Tilføj et tredje for at kontrollere.',
+      d && d < 15 ? 'Punkterne ligger tæt (under 15 m). Længere afstand giver en mere præcis placering.' : ''].filter(Boolean).join(' ');
+  }
+  const op = h('input', {type:'range', min:'0.2', max:'1', step:'0.05', value:String(u.opacity ?? 0.8), style:'width:100%'});
+  op.addEventListener('change', () => mutate(() => u.opacity = +op.value));
+  pn.append(h('p', {}, info), u.refs.length ? rows : null,
+    u.tf ? h('div', {class:'row'}, h('label', {}, 'Synlighed'), h('div', {class:'grow'}, op)) : null,
+    h('div', {class:'acts'},
+      u.tf ? h('button', {class:'btn', onclick:() => closeGeo(true)}, 'Vis på kortet') : null,
+      h('button', {class:'btn pri', onclick:() => { geo.state = 'place'; geo.sel = null; geoRender(); }}, '+ Referencepunkt')));
+}
+function geoAddRef(lat, lng, acc, src){
+  const u = ulOf(geo.id); if (!u || !geo.pending) return;
+  mutate(() => { u.refs.push({u:geo.pending.u, v:geo.pending.v, lat, lng, acc, src, t:Date.now()}); refit(u); });
+  geo.pending = null; geo.state = 'list'; geoRender();
+}
+function geoStartGps(){
+  if (!('geolocation' in navigator) || !window.isSecureContext){ toast('GPS kræver at appen åbnes via https'); return; }
+  geo.state = 'gps'; geo.samples = []; geo.gpsInfo = {n:0, left:10}; const t0 = Date.now();
+  geo.watch = navigator.geolocation.watchPosition(p => {
+    if (!geo) return;
+    geo.samples.push({lat:p.coords.latitude, lng:p.coords.longitude, acc:p.coords.accuracy});
+    upd();
+  }, err => { toast('Ingen GPS-position: ' + err.message, 5000); }, {enableHighAccuracy:true, maximumAge:0, timeout:30000});
+  const upd = () => {
+    if (!geo || geo.state!=='gps') return;
+    const s = geo.samples, left = Math.max(0, 10 - Math.round((Date.now()-t0)/1000));
+    geo.gpsInfo = {n:s.length, left, acc: s.length ? [...s.map(x => x.acc)].sort((a,b) => a-b)[Math.floor(s.length/2)] : null};
+    if (left===0 && s.length) { geoFinishGps(); return; }
+    geoRender();
+  };
+  geo.timer = setInterval(upd, 1000);
+  geoRender();
+}
+function geoStopGps(){ if (!geo) return; if (geo.watch!=null) navigator.geolocation.clearWatch(geo.watch); clearInterval(geo.timer); geo.watch = null; geo.timer = null; }
+function geoFinishGps(){
+  const s = geo.samples; geoStopGps(); if (!s.length) return;
+  // vægtet gennemsnit; de bedste målinger tæller mest
+  let W = 0, la = 0, lo = 0; for (const x of s){ const w = 1/Math.max(x.acc, 1)**2; W += w; la += w*x.lat; lo += w*x.lng; }
+  const acc = [...s.map(x => x.acc)].sort((a,b) => a-b)[Math.floor(s.length/2)];
+  geoAddRef(la/W, lo/W, Math.round(acc*10)/10, 'gps');
+}
+function geoPickOnMap(){
+  geoStopGps();
+  const u = ulOf(geo.id); u._hide = true; syncUnderlays();
+  $('#geo').hidden = true;
+  setMode('georef', {text:`Tryk på luftfotoet der, hvor referencepunkt ${u.refs.length+1} er`});
+}
+function geoPicked(ll){
+  setMode('select');
+  if (!geo) return;
+  $('#geo').hidden = false; geo.gm.invalidateSize();
+  geoAddRef(ll[0], ll[1], 1, 'map');
+}
+
+/* ---------- kortlag ---------- */
 $('#layerBtn').addEventListener('click', () => dialog((d, close) => {
   const list = h('div', {class:'plist'});
   for (const [k, B] of Object.entries(BASES)){
@@ -2242,7 +2532,30 @@ $('#layerBtn').addEventListener('click', () => dialog((d, close) => {
     list.append(h('label', {class:'opt' + (k===baseId?' on':'')}, h('input', {type:'radio', name:'base', checked:k===baseId, disabled:dis, onchange:() => { setBase(k); close(); }}),
       h('div', {}, h('b', {}, B.name), dis ? h('div', {style:'font-size:13px;color:var(--dim)'}, 'Kræver en gratis API-nøgle fra Datafordeleren (Indstillinger)') : null)));
   }
-  d.append(h('h2', {}, 'Kortlag'), list, h('div', {class:'acts'}, h('button', {class:'btn', onclick:() => { close(); settingsDialog(); }}, 'Indstillinger'), h('button', {class:'btn pri', onclick:() => close()}, 'Luk')));
+  const uls = h('div', {class:'plist'});
+  for (const u of (P?.ff.underlays||[])){
+    const st = geoStats(u);
+    const vis = h('input', {type:'checkbox', checked:u.visible, disabled:!u.tf, style:'width:20px;height:20px'});
+    vis.addEventListener('change', () => mutate(() => u.visible = vis.checked));
+    const op = h('input', {type:'range', min:'0.2', max:'1', step:'0.05', value:String(u.opacity ?? 0.8), style:'width:100%'});
+    op.addEventListener('input', () => { u.opacity = +op.value; ulLayers.get(u.id)?.update(); });
+    op.addEventListener('change', () => mutate(() => u.opacity = +op.value));
+    uls.append(h('div', {class:'opt', style:'flex-direction:column;cursor:default'},
+      h('div', {class:'row', style:'width:100%'}, vis, h('div', {class:'grow'}, h('b', {}, u.name),
+        h('div', {style:'font-size:13px;color:var(--dim)'}, !u.tf ? `Ikke placeret endnu (${u.refs.length} af mindst 2 punkter)` : `${u.refs.length} referencepunkter` + (st.mean!=null ? ` · afviger ${fmtNum(st.mean, 1)} m` : '')))),
+      u.tf ? op : null,
+      h('div', {class:'row'},
+        h('button', {class:'btn small', onclick:() => { close(); geoEditor(u.id); }}, u.tf ? 'Ret placering' : 'Placér'),
+        u.tf ? h('button', {class:'btn small', onclick:() => { close(); fitUnderlay(u); }}, 'Vis') : null,
+        h('button', {class:'btn small danger', onclick: async () => {
+          if (await confirmDlg(`Fjern ${u.name}?`, 'Tegningen og dens referencepunkter fjernes fra projektet.', 'Fjern')){ mutate(() => P.ff.underlays = P.ff.underlays.filter(x => x!==u)); close(); }
+        }}, 'Fjern'))));
+  }
+  d.append(h('h2', {}, 'Kortlag'), list,
+    h('h3', {style:'margin:6px 0 0;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)'}, 'Egne tegninger'),
+    (P?.ff.underlays||[]).length ? uls : h('p', {style:'font-size:14px'}, 'Indlæs en situationsplan eller el-tegning og placér den på kortet med 2–4 referencepunkter.'),
+    h('div', {class:'row'}, h('button', {class:'btn', onclick:() => { close(); pickDrawing(); }}, '+ Indlæs tegning (PDF, JPG, PNG)')),
+    h('div', {class:'acts'}, h('button', {class:'btn', onclick:() => { close(); settingsDialog(); }}, 'Indstillinger'), h('button', {class:'btn pri', onclick:() => close()}, 'Luk')));
 }));
 function settingsDialog(){
   return dialog((d, close) => {
