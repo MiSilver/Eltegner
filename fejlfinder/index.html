@@ -833,6 +833,8 @@ textarea{min-height:64px;resize:vertical}
 .lolabels .pm.sel .lb{display:block}
 .stublb{font:700 10px/1 var(--font);color:#111;background:#ffd76ae6;border-radius:3px;padding:2px 3px;white-space:nowrap;transform:translate(-50%,-50%);display:inline-block}
 .lolabels .stublb{display:none}
+.stubh{width:36px;height:36px;display:grid;place-items:center;cursor:grab}
+.stubh i{width:16px;height:16px;border-radius:50%;background:#ffd76a;border:2.5px solid #101820;box-shadow:0 0 0 2px #fff8}
 .vx{width:16px;height:16px;border-radius:50%;background:#fff;border:3px solid var(--accent);box-shadow:0 0 0 1px #0007}
 .gpsdot{width:18px;height:18px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 0 1px #0005,0 0 8px #1a73e8}
 .leaflet-control-attribution{font-size:10px}
@@ -885,7 +887,7 @@ textarea{min-height:64px;resize:vertical}
 </script>
 <script>
 'use strict';
-const APP_VERSION = '0.1.1';
+const APP_VERSION = '0.1.2';
 /* ============================================================
    Konstanter
    ============================================================ */
@@ -1183,16 +1185,27 @@ function renderStubs(){
   for (const p of P.ff.points){
     const free = p.ends.filter(e => !linkOfEnd(p.id, e.id));
     if (!free.length) continue;
-    const m = mpp(p.lat), len = 34*m;
-    // retninger der allerede bruges af forbindelser
+    const m = mpp(p.lat), len = 34*m, c = [p.lat, p.lng];
     free.forEach((e, i) => {
-      const brg = e.bearing ?? (210 + i*360/Math.max(free.length,1)) % 360;
-      const tip = offsetLL([p.lat,p.lng], brg, len);
-      const start = offsetLL([p.lat,p.lng], brg, 13*m);
-      L.polyline([start, tip], {color:'#101820', weight:7, opacity:.5, interactive:false, lineCap:'round'}).addTo(lyStubs);
-      L.polyline([start, tip], {color:'#ffd76a', weight:4, dashArray:'4 4', interactive:false}).addTo(lyStubs);
-      const lbl = (e.ctype||'?') + (e.bearing==null?'':'');
-      L.marker(offsetLL([p.lat,p.lng], brg, len+9*m), {interactive:false, icon:L.divIcon({className:'', html:`<span class="stublb">${esc(lbl)}</span>`, iconSize:[0,0]})}).addTo(lyStubs);
+      let brg = e.bearing ?? (210 + i*360/Math.max(free.length,1)) % 360;
+      const tip = offsetLL(c, brg, len), start = offsetLL(c, brg, 13*m);
+      const casing = L.polyline([start, tip], {color:'#101820', weight:7, opacity:.5, interactive:false, lineCap:'round'}).addTo(lyStubs);
+      const dash = L.polyline([start, tip], {color:'#ffd76a', weight:4, dashArray:'4 4', interactive:false}).addTo(lyStubs);
+      const lbl = L.marker(offsetLL(c, brg, len + 14*m), {interactive:false, keyboard:false, icon:L.divIcon({className:'', html:`<span class="stublb">${esc(e.ctype||'?')}</span>`, iconSize:[0,0]})}).addTo(lyStubs);
+      // håndtag i enden: træk for at vise retningen
+      const hnd = L.marker(tip, {draggable: mode==='select', keyboard:false, zIndexOffset:-100, title:'Træk for at vise retningen',
+        icon:L.divIcon({className:'', html:'<div class="stubh"><i></i></div>', iconSize:[36,36], iconAnchor:[18,18]})}).addTo(lyStubs);
+      hnd.on('click', ev => { L.DomEvent.stop(ev); if (mode==='select'){ sel = {t:'p', id:p.id}; render(); ensureVisible(c); } });
+      hnd.on('dragstart', () => snapshot());
+      hnd.on('drag', ev => {
+        const ll = ev.target.getLatLng(), to = [ll.lat, ll.lng];
+        if (dist(c, to) < 4*m) return;
+        brg = bearing(c, to);
+        const st = offsetLL(c, brg, 13*m);
+        casing.setLatLngs([st, to]); dash.setLatLngs([st, to]);
+        lbl.setLatLng(offsetLL(to, brg, 14*m));
+      });
+      hnd.on('dragend', () => { e.bearing = Math.round(brg) % 360; changed(); });
     });
   }
 }
@@ -1208,7 +1221,7 @@ function renderPoints(){
     const m = L.marker([p.lat,p.lng], {icon, draggable:isSel && mode==='select', zIndexOffset: isSel?1000:(isPendA?900:0), keyboard:false, title:p.label||''}).addTo(lyPts);
     m.on('click', e => { L.DomEvent.stop(e); onPointTap(p.id); });
     m.on('dragstart', () => snapshot());
-    m.on('drag', ev => { const ll = ev.target.getLatLng(); p.lat = ll.lat; p.lng = ll.lng; p.acc = null; renderLinks(); });
+    m.on('drag', ev => { const ll = ev.target.getLatLng(); p.lat = ll.lat; p.lng = ll.lng; p.acc = null; renderLinks(); renderStubs(); });
     m.on('dragend', () => changed());
   }
 }
@@ -1260,7 +1273,7 @@ function setMode(m, opts={}){
   }[m];
   hint.hidden = !txt; if (txt) $('#hintText').textContent = opts.text || txt;
   $('#map').style.cursor = (m==='select') ? '' : 'crosshair';
-  if (P) { renderPend(); renderPoints(); }
+  if (P) { renderPend(); renderStubs(); renderPoints(); }
 }
 function updAddTool(){
   $('#addIco').innerHTML = symSVG(addKind, 'unk', 26);
@@ -1481,6 +1494,7 @@ function endCard(p, e, i){
     conn = h('div', {class:'conn'}, h('span', {class:'tag warn'}, 'løs ende'),
       e.bearing!=null ? h('span', {}, `går mod ${compass(e.bearing)} (${e.bearing}°)`) : null,
       h('button', {class:'btn small', onclick:() => { bearingTarget = {p:p.id, e:e.id}; setMode('bearing'); }}, e.bearing==null?'Angiv retning':'Ret retning'),
+      e.bearing==null ? h('span', {style:'font-size:12px;color:var(--dim)'}, 'eller træk i den gule prik på kortet') : null,
       h('button', {class:'btn small pri', onclick:() => { pend = {a:{p:p.id, e:e.id}, via:[]}; setMode('link'); }}, 'Forbind …'));
   }
   const del = h('button', {class:'x', title:'Fjern kablet', onclick: async () => {
@@ -1970,7 +1984,7 @@ function exampleProject(){
   const g1 = {id:uid(), name:'Gr. 12 stilys', board:'T1', fuse:'C10', color:GROUP_COLORS[0], note:''};
   p.ff.groups.push(g1);
   const mk = (kind, label, xy, status, group, ends, note='') => { const q = {id:uid(), kind, lat:at(...xy)[0], lng:at(...xy)[1], acc:null, label, status, note, group, ends: ends.map(([ct, cores, brg]) => ({id:uid(), ctype:ct, cores, note:'', bearing:brg??null})), meas:[], photos:[], t:Date.now()}; p.ff.points.push(q); return q; };
-  const T = mk('board', 'T1', [-60, 10], 'ok', g1.id, [['5G2,5','L1 N PE','']]);
+  const T = mk('board', 'T1', [-60, 10], 'ok', g1.id, [['5G2,5','L1 N PE']]);
   const L1 = mk('lamp', 'L1', [-30, 10], 'ok', g1.id, [['5G2,5','L1 N PE'],['5G2,5','L1 N PE']]);
   const L2 = mk('lamp', 'L2', [0, 10], 'ok', g1.id, [['5G2,5','L1 N PE'],['5G2,5','L1 N PE']]);
   const L3 = mk('lamp', 'L3', [30, 10], 'off', g1.id, [['5G2,5','L1 N PE'],['5G2,5','', 90]], 'Ingen spænding på klemmerne – sikringsholder ok');
