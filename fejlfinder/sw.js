@@ -1,6 +1,6 @@
 // Fejlfinder: appen virker uden net. Kortbilleder og projekter gemmes af appen selv (IndexedDB).
-const CACHE = 'fejlfinder-v0.1.3';
-const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+const CACHE = 'fejlfinder-v0.2.0';
+const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './jspdf.umd.min.js', './pdf-fonts.js'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))); self.clients.claim(); });
 self.addEventListener('fetch', e => {

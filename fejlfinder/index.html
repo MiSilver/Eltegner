@@ -890,7 +890,7 @@ textarea{min-height:64px;resize:vertical}
 </script>
 <script>
 'use strict';
-const APP_VERSION = '0.1.3';
+const APP_VERSION = '0.2.0';
 /* ============================================================
    Konstanter
    ============================================================ */
@@ -1829,6 +1829,7 @@ async function projectMenu(){
       h('h3', {style:'margin:6px 0 0;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)'}, P ? `Dette projekt: ${P.name}` : ''),
       P ? h('div', {class:'row'},
         h('button', {class:'btn', onclick:() => { close(); exportSel(false); }}, 'Gem som fil (.sel)'),
+        h('button', {class:'btn', onclick:() => { close(); pdfDialog(); }}, 'Eksportér PDF'),
         navigator.canShare ? h('button', {class:'btn', onclick:() => { close(); exportSel(true); }}, 'Del …') : null,
         h('button', {class:'btn', onclick: async () => { const n = await askText('Omdøb projekt', '', P.name, 'Gem'); if (n && n.trim()){ P.name = n.trim(); $('#projName').textContent = P.name; changed(); close(); } }}, 'Omdøb'),
         h('button', {class:'btn danger', onclick: async () => {
@@ -1852,25 +1853,358 @@ async function projectToSel(){
     fejlfinder:{...clone(P.ff), id:P.id, photos}};
 }
 const blobToDataURL = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(b); });
-async function exportSel(share){
-  const data = await projectToSel();
-  const name = (P.name.replace(/[\\/:*?"<>|]+/g, '-').trim() || 'projekt') + '.sel';
-  const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
+const safeName = () => P.name.replace(/[\\/:*?"<>|]+/g, '-').replace(/[–—]/g, '-').trim() || 'projekt';
+async function saveFile(blob, name, desc, ext, share){
+  const mime = blob.type;
   if (share){
-    const file = new File([blob], name, {type:'application/json'});
+    const file = new File([blob], name, {type:mime});
     if (navigator.canShare?.({files:[file]})){
       try{ await navigator.share({files:[file], title:P.name}); return; }catch(e){ if (e.name==='AbortError') return; }
     }
   }
   if (window.showSaveFilePicker && !share){
     try{
-      const hnd = await showSaveFilePicker({suggestedName:name, types:[{description:'Silvert El-projekt', accept:{'application/json':['.sel']}}]});
+      const hnd = await showSaveFilePicker({suggestedName:name, types:[{description:desc, accept:{[mime]:[ext]}}]});
       const w = await hnd.createWritable(); await w.write(blob); await w.close(); toast('Gemt som ' + hnd.name); return;
     }catch(e){ if (e.name==='AbortError') return; }
   }
   const a = h('a', {href:URL.createObjectURL(blob), download:name}); document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   toast('Hentet som ' + name);
+}
+async function exportSel(share){
+  const data = await projectToSel();
+  const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
+  await saveFile(blob, safeName() + '.sel', 'Silvert El-projekt', '.sel', share);
+}
+
+/* ============================================================
+   PDF-eksport
+   ============================================================ */
+const PAPER = {A4:[210,297], A3:[297,420]};
+function loadScript(src){
+  return new Promise((res, rej) => {
+    if (document.querySelector(`script[data-src="${src}"]`)) return res();
+    const s = document.createElement('script'); s.src = src; s.dataset.src = src;
+    s.onload = res; s.onerror = () => rej(new Error('kunne ikke indlæse ' + src)); document.head.append(s);
+  });
+}
+function pdfDialog(){
+  const o = Object.assign({paper:'A4', orient:'l', area:'all', bg:baseId!=='none', list:true, photos:true}, ls.get('pdf', {}));
+  const nPhotos = P.ff.points.reduce((s, p) => s + p.photos.length, 0);
+  dialog((d, close) => {
+    const pageIco = (w, hh) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="${12-w/2}" y="${12-hh/2}" width="${w}" height="${hh}" rx="1.5"/></svg>`;
+    const segOf = (key, items) => { const sg = h('div', {class:'seg'}); const draw = () => { sg.innerHTML = ''; items.forEach(([v, t, ico]) => sg.append(h('button', {class:o[key]===v?'on':'', onclick:() => { o[key] = v; draw(); prev(); }, html:(ico||'') + `<span>${esc(t)}</span>`}))); }; draw(); return sg; };
+    const box = h('div', {style:'display:flex;justify-content:center;padding:4px 0'});
+    const prev = () => {
+      const [pw, ph] = PAPER[o.paper], W = o.orient==='l' ? ph : pw, H = o.orient==='l' ? pw : ph, k = 120/Math.max(W, H);
+      box.innerHTML = `<svg width="${W*k+2}" height="${H*k+2}" viewBox="-1 -1 ${W*k+2} ${H*k+2}"><rect width="${W*k}" height="${H*k}" style="fill:var(--card);stroke:var(--dim)"/>
+        <rect x="${10*k}" y="${10*k}" width="${(W-20)*k}" height="${14*k}" style="fill:var(--line)"/>
+        <rect x="${10*k}" y="${27*k}" width="${(W-20)*k}" height="${(H-27-30)*k}" fill="#7d8f6a" opacity=".55"/>
+        <rect x="${10*k}" y="${(H-27)*k}" width="${(W-20)*k}" height="${17*k}" style="fill:var(--line)"/></svg>
+        <span style="align-self:center;margin-left:12px;color:var(--dim);font-size:13px">${o.paper} ${o.orient==='l'?'vandret':'lodret'}<br>${W} × ${H} mm</span>`;
+    };
+    const chk = (key, label, dis) => { const c = h('input', {type:'checkbox', checked:o[key] && !dis, disabled:dis}); c.addEventListener('change', () => o[key] = c.checked);
+      return h('label', {class:'opt', style:dis?'opacity:.5':''}, c, h('div', {}, label)); };
+    const area = h('div', {class:'seg'});
+    const drawArea = () => { area.innerHTML = ''; [['all','Alle punkter'],['view','Det viste udsnit']].forEach(([v,t]) => area.append(h('button', {class:o.area===v?'on':'', onclick:() => { o.area = v; drawArea(); }}, t))); };
+    drawArea();
+    const status = h('p', {style:'font-size:14px;min-height:20px'});
+    const bar = h('div', {class:'progress', hidden:true}, h('i', {}));
+    const run = async share => {
+      ls.set('pdf', o); btns.forEach(b => b.disabled = true); bar.hidden = false;
+      try{
+        const blob = await makePdf(o, (t, f) => { status.textContent = t; if (f!=null) bar.firstChild.style.width = (f*100) + '%'; });
+        close(); await saveFile(blob, `${safeName()} - oversigt ${o.paper}.pdf`, 'PDF', '.pdf', share);
+      }catch(e){ console.error(e); status.textContent = 'Kunne ikke lave PDF: ' + e.message; btns.forEach(b => b.disabled = false); }
+    };
+    const btns = [h('button', {class:'btn', onclick:() => close()}, 'Annullér')];
+    if (navigator.canShare) btns.push(h('button', {class:'btn', onclick:() => run(true)}, 'Del …'));
+    btns.push(h('button', {class:'btn pri', onclick:() => run(false)}, 'Gem PDF'));
+    d.append(h('h2', {}, 'Eksportér PDF'),
+      h('div', {class:'row'}, h('label', {}, 'Papir'), h('div', {class:'grow'}, segOf('paper', [['A4','A4'],['A3','A3']]))),
+      h('div', {class:'row'}, h('label', {}, 'Retning'), h('div', {class:'grow'}, segOf('orient', [['p','Lodret', pageIco(13,18)],['l','Vandret', pageIco(18,13)]]))),
+      box,
+      h('div', {class:'row'}, h('label', {}, 'Udsnit'), h('div', {class:'grow'}, area)),
+      chk('bg', 'Luftfoto som baggrund', baseId==='none'),
+      chk('list', 'Punktliste og forbindelser (A4 lodret)'),
+      chk('photos', `Fotos (${nPhotos})`, !nPhotos),
+      bar, status,
+      h('div', {class:'acts'}, ...btns));
+    prev();
+  });
+}
+async function tileBitmap(id, z, x, y){
+  const key = id + '/' + z + '/' + x + '/' + y;
+  let b = await dbGet('tiles', key).catch(() => null);
+  if (!b){
+    const r = await fetch(L.Util.template(tileUrl(id), {z, x, y}), {mode:'cors'});
+    if (!r.ok) throw new Error(r.status);
+    b = await r.blob(); dbPut('tiles', b, key).catch(()=>{});
+  }
+  return createImageBitmap(b);
+}
+async function makePdf(o, progress){
+  progress('Indlæser PDF-værktøj …', 0.02);
+  await loadScript('jspdf.umd.min.js'); await loadScript('pdf-fonts.js');
+  const {jsPDF} = window.jspdf;
+  const [pw, ph] = PAPER[o.paper];
+  const doc = new jsPDF({orientation:o.orient, unit:'mm', format:o.paper.toLowerCase(), compress:true});
+  doc.addFileToVFS('Roboto-Regular.ttf', FF_FONTS.regular); doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+  doc.addFileToVFS('Roboto-Bold.ttf', FF_FONTS.bold); doc.addFont('Roboto-Bold.ttf', 'Roboto', 'bold');
+  const font = (sz, bold) => { doc.setFont('Roboto', bold ? 'bold' : 'normal'); doc.setFontSize(sz); };
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 10;
+  const INK = '#15202a', DIM = '#5d6b76', LINE = '#c9d0d4';
+  const pts = P.ff.points, coll = new Intl.Collator('da', {numeric:true});
+  const now = new Date(), dateTxt = now.toLocaleDateString('da-DK', {day:'numeric', month:'long', year:'numeric'}) + ' kl. ' + now.toLocaleTimeString('da-DK', {hour:'2-digit', minute:'2-digit'});
+
+  /* --- side 1: oversigt --- */
+  // titel
+  font(15, true); doc.setTextColor(INK); doc.text(P.name, M, M + 6);
+  font(8.5); doc.setTextColor(DIM); doc.text(`Oversigt · udskrevet ${dateTxt}`, M, M + 11.5);
+  const nFree = pts.reduce((s, p) => s + p.ends.filter(e => !linkOfEnd(p.id, e.id)).length, 0);
+  const nConf = P.ff.links.filter(l => l.state==='bekraeftet').length;
+  const nErr = pts.filter(p => p.status==='off' || p.status==='nov').length;
+  doc.text(`${pts.length} punkter · ${nErr} med fejl · ${P.ff.links.length} forbindelser (${nConf} bekræftet) · ${nFree} løse ender`, W - M, M + 11.5, {align:'right'});
+  doc.setDrawColor(INK); doc.setLineWidth(0.4); doc.line(M, M + 14, W - M, M + 14);
+
+  // signaturforklaring (beregn højde først)
+  const kindsUsed = [...new Set(pts.map(p => p.kind))];
+  const legend = [];
+  kindsUsed.forEach(k => legend.push({t:'sym', kind:k, st:'unk', label:KINDS[k].name}));
+  Object.entries(STATUS).forEach(([k, s]) => legend.push({t:'sym', kind:'lamp', st:k, label:s.name}));
+  legend.push({t:'line', dash:false, label:'Bekræftet forbindelse'}, {t:'line', dash:true, label:'Formodet forbindelse'}, {t:'stub', label:'Løs kabelende'});
+  P.ff.groups.forEach(g => legend.push({t:'grp', color:g.color, label:g.name + (g.board?` (${g.board}${g.fuse?', '+g.fuse:''})`:'')}));
+  font(7.5);
+  const itemW = it => 7 + doc.getTextWidth(it.label) + 5;
+  const rows = []; let row = [], rw = 0;
+  for (const it of legend){ const w = itemW(it); if (rw + w > W - 2*M && row.length){ rows.push(row); row = []; rw = 0; } row.push(it); rw += w; }
+  if (row.length) rows.push(row);
+  const legH = 4 + rows.length * 5.5;
+  const fx = M, fy = M + 17, fw = W - 2*M, fh = H - fy - M - legH - 2;
+
+  // udsnit i verdenskoordinater (zoom 0)
+  const P0 = ll => map.project(L.latLng(ll[0], ll[1]), 0);
+  let lls = [];
+  if (o.area==='view'){ const b = map.getBounds(); lls = [[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]]; }
+  else { pts.forEach(p => lls.push([p.lat, p.lng])); P.ff.links.forEach(l => (l.via||[]).forEach(v => lls.push(v))); }
+  if (!lls.length){ const c = map.getCenter(); lls = [[c.lat, c.lng]]; }
+  const ws = lls.map(P0);
+  let minX = Math.min(...ws.map(p => p.x)), maxX = Math.max(...ws.map(p => p.x)), minY = Math.min(...ws.map(p => p.y)), maxY = Math.max(...ws.map(p => p.y));
+  const lat0 = (lls.reduce((s, l) => s + l[0], 0) / lls.length);
+  const mPerW = 40075016.686 * Math.cos(lat0*Math.PI/180) / 256; // meter pr. verdenspixel ved zoom 0
+  const minExt = 40 / mPerW; // mindst 40 m
+  const cx = (minX + maxX)/2, cy = (minY + maxY)/2;
+  const ex = Math.max(maxX - minX, minExt), ey = Math.max(maxY - minY, minExt);
+  const pad = o.area==='view' ? 1 : 1.18;
+  const s = Math.min(fw/(ex*pad), fh/(ey*pad)); // mm pr. verdenspixel
+  const toMM = ll => { const p = P0(ll); return [fx + fw/2 + (p.x - cx)*s, fy + fh/2 + (p.y - cy)*s]; };
+  const mPerMM = mPerW / s;
+
+  // baggrund
+  let bgNote = '';
+  if (o.bg && BASES[baseId].url){
+    const B = BASES[baseId];
+    let z = Math.round(Math.log2((fw/25.4*200) / (fw/s)));
+    z = Math.max(1, Math.min(B.maxNative, z));
+    const dims = zz => { const k = 2**zz; return {k, x0:(cx - fw/s/2)*k, y0:(cy - fh/s/2)*k, wpx:fw/s*k, hpx:fh/s*k}; };
+    let g = dims(z);
+    while (z > 1 && (Math.max(g.wpx, g.hpx) > 4096 || Math.ceil(g.wpx/256+1)*Math.ceil(g.hpx/256+1) > 360)){ z--; g = dims(z); }
+    const cv = document.createElement('canvas'); cv.width = Math.round(g.wpx); cv.height = Math.round(g.hpx);
+    const ctx = cv.getContext('2d'); ctx.fillStyle = '#d5dbde'; ctx.fillRect(0, 0, cv.width, cv.height);
+    const tx0 = Math.floor(g.x0/256), ty0 = Math.floor(g.y0/256), tx1 = Math.floor((g.x0+g.wpx)/256), ty1 = Math.floor((g.y0+g.hpx)/256);
+    const jobs = []; for (let x = tx0; x <= tx1; x++) for (let y = ty0; y <= ty1; y++) jobs.push({x, y});
+    let done = 0, ok = 0, i = 0;
+    const worker = async () => { while (i < jobs.length){ const t = jobs[i++];
+      try{ const bm = await tileBitmap(baseId, z, t.x, t.y); ctx.drawImage(bm, t.x*256 - g.x0, t.y*256 - g.y0, 256, 256); ok++; }catch{}
+      done++; progress(`Henter luftfoto … ${done} af ${jobs.length}`, 0.05 + 0.6*done/jobs.length); } };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    if (ok){
+      ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(0, 0, cv.width, cv.height);
+      doc.addImage(cv.toDataURL('image/jpeg', 0.82), 'JPEG', fx, fy, fw, fh, 'bg', 'FAST');
+      bgNote = B.attr + (ok < jobs.length ? ` · ${jobs.length - ok} kortbilleder manglede` : '');
+    } else bgNote = 'Luftfotoet kunne ikke hentes (ingen forbindelse?)';
+  }
+  if (!bgNote || /kunne ikke/.test(bgNote)){ doc.setFillColor('#f3f5f4'); doc.rect(fx, fy, fw, fh, 'F'); }
+  progress('Tegner oversigten …', 0.7);
+
+  // tegn i rammen
+  doc.saveGraphicsState(); doc.rect(fx, fy, fw, fh, null); doc.clip(); doc.discardPath();
+  doc.setLineCap('round'); doc.setLineJoin('round');
+  for (const l of P.ff.links){
+    const a = pt(l.a.p), b = pt(l.b.p); if (!a || !b) continue;
+    const seq = linkLL(l).map(toMM);
+    const col = groupColorOfLink(l) || '#e0a000';
+    const poly = (w, c, dash) => { doc.setLineWidth(w); doc.setDrawColor(c); doc.setLineDashPattern(dash || [], 0);
+      for (let k = 1; k < seq.length; k++) doc.line(seq[k-1][0], seq[k-1][1], seq[k][0], seq[k][1]); };
+    poly(1.25, '#ffffff');
+    poly(0.75, col, l.state==='bekraeftet' ? null : [1.8, 1.3]);
+  }
+  doc.setLineDashPattern([], 0);
+  const drawStub = (x, y, brg, label) => {
+    const r = brg*Math.PI/180, dx = Math.sin(r), dy = -Math.cos(r);
+    doc.setLineWidth(0.9); doc.setDrawColor('#101820'); doc.line(x + dx*2.8, y + dy*2.8, x + dx*7, y + dy*7);
+    doc.setLineWidth(0.5); doc.setDrawColor('#ffd76a'); doc.setLineDashPattern([0.8, 0.8], 0); doc.line(x + dx*2.8, y + dy*2.8, x + dx*7, y + dy*7); doc.setLineDashPattern([], 0);
+    if (label){ font(5.2, true); const tw = doc.getTextWidth(label) + 1.4, lx = x + dx*9.6, ly = y + dy*9.6;
+      doc.setFillColor('#ffd76a'); doc.roundedRect(lx - tw/2, ly - 1.4, tw, 2.8, 0.5, 0.5, 'F'); doc.setTextColor('#111111'); doc.text(label, lx, ly, {align:'center', baseline:'middle'}); }
+  };
+  for (const p of pts){
+    const [x, y] = toMM([p.lat, p.lng]);
+    const free = p.ends.filter(e => !linkOfEnd(p.id, e.id));
+    free.forEach((e, i) => drawStub(x, y, e.bearing ?? (210 + i*360/free.length) % 360, e.ctype || '?'));
+  }
+  for (const p of pts){
+    const [x, y] = toMM([p.lat, p.lng]);
+    pdfSym(doc, p.kind, p.status, x, y, 5, p.group ? grp(p.group)?.color : null);
+    if (p.label){ font(6.5, true); const tw = doc.getTextWidth(p.label) + 1.6;
+      doc.setFillColor('#ffffff'); doc.roundedRect(x - tw/2, y + 3.1, tw, 3.2, 0.6, 0.6, 'F'); doc.setTextColor('#111111'); doc.text(p.label, x, y + 4.75, {align:'center', baseline:'middle'}); }
+  }
+  // nordpil og målestok
+  const nx = fx + fw - 9, ny = fy + 9;
+  doc.setFillColor('#ffffff'); doc.circle(nx, ny, 5.5, 'F');
+  doc.setFillColor(INK); doc.triangle(nx, ny - 4, nx - 2, ny + 1.2, nx + 2, ny + 1.2, 'F');
+  font(6.5, true); doc.setTextColor(INK); doc.text('N', nx, ny + 3.6, {align:'center', baseline:'middle'});
+  const nice = [1,2,5,10,20,25,50,100,200,250,500,1000,2000];
+  const sbM = nice.filter(v => v / mPerMM <= 32).pop() || 1, sbW = sbM / mPerMM;
+  const sx = fx + 4, sy = fy + fh - 5;
+  doc.setFillColor('#ffffff'); doc.roundedRect(sx - 2, sy - 6, Math.max(sbW, 30) + 4, 9, 1, 1, 'F');
+  doc.setFillColor(INK); doc.rect(sx, sy - 1.2, sbW/2, 1.2, 'F'); doc.setDrawColor(INK); doc.setLineWidth(0.25); doc.rect(sx + sbW/2, sy - 1.2, sbW/2, 1.2, 'S');
+  font(6.5); doc.setTextColor(INK); doc.text(`${sbM} m`, sx + sbW + 1, sy, {baseline:'bottom'});
+  const den = mPerMM * 1000, den2 = Math.round(den / 10**Math.floor(Math.log10(den)-1)) * 10**Math.floor(Math.log10(den)-1);
+  doc.text(`ca. 1:${den2.toLocaleString('da-DK')} i ${o.paper}`, sx, sy - 2.4);
+  doc.restoreGraphicsState();
+  doc.setDrawColor(INK); doc.setLineWidth(0.3); doc.rect(fx, fy, fw, fh, 'S');
+  if (bgNote){ font(5.5); doc.setTextColor(DIM); doc.text(bgNote, fx + fw, fy + fh + 2.6, {align:'right'}); }
+
+  // signaturforklaring
+  let ly = H - M - legH + 4.5;
+  for (const r of rows){
+    let lx = M;
+    for (const it of r){
+      if (it.t==='sym') pdfSym(doc, it.kind, it.st, lx + 2.5, ly - 0.2, 4.2);
+      else if (it.t==='grp'){ doc.setDrawColor(it.color); doc.setLineWidth(0.6); doc.setFillColor('#ffffff'); doc.circle(lx + 2.5, ly - 0.2, 1.9, 'FD'); }
+      else if (it.t==='line'){ doc.setLineWidth(1); doc.setDrawColor('#c9d0d4'); doc.line(lx, ly - 0.2, lx + 5, ly - 0.2); doc.setLineWidth(0.6); doc.setDrawColor('#e0a000'); doc.setLineDashPattern(it.dash ? [1.5, 1] : [], 0); doc.line(lx, ly - 0.2, lx + 5, ly - 0.2); doc.setLineDashPattern([], 0); }
+      else if (it.t==='stub'){ drawStub(lx - 1.8, ly - 0.2, 90, ''); }
+      font(7.5); doc.setTextColor(INK); doc.text(it.label, lx + 6.5, ly, {baseline:'middle'});
+      lx += itemW(it);
+    }
+    ly += 5.5;
+  }
+
+  /* --- punktliste og forbindelser --- */
+  const lw = 210 - 2*M;
+  let y = 0;
+  const newPage = title => { doc.addPage('a4', 'p'); y = M + 6; if (title){ font(13, true); doc.setTextColor(INK); doc.text(title, M, y); y += 7; } };
+  const need = hh => { if (y + hh > 297 - M - 6) newPage(); };
+  const wrap = (txt, w, sz, bold) => { font(sz, bold); return doc.splitTextToSize(txt, w); };
+  const measTxt = m => `${(MEAS[m.kind]||MEAS.other).name}${m.between?' '+m.between:''}: ${m.value}${m.unit?' '+m.unit:''}${m.note?' · '+m.note:''} · ${fmtTime(m.t)}`;
+  if (o.list && pts.length){
+    progress('Skriver punktlisten …', 0.8);
+    newPage('Punkter');
+    for (const p of pts.slice().sort((a, b) => coll.compare(a.label||'', b.label||''))){
+      const g = p.group ? grp(p.group) : null;
+      const head = [KINDS[p.kind].name, STATUS[p.status].name, g ? g.name + (g.board?` (${g.board})`:'') : null, p.acc!=null ? `GPS ±${p.acc} m` : null].filter(Boolean).join(' · ');
+      const lines = [];
+      p.ends.forEach((e, i) => {
+        const l = linkOfEnd(p.id, e.id);
+        let to;
+        if (l){ const os = otherSide(l, p.id, e.id), op = pt(os.p); to = `til ${op?.label||'?'}, kabel ${endIndex(op, os.e)} (${l.state==='bekraeftet'?'bekræftet':'formodet'})`; }
+        else to = 'løs ende' + (e.bearing!=null ? ` mod ${compass(e.bearing)} (${e.bearing}°)` : '');
+        lines.push({k:`Kabel ${i+1}`, v:[e.ctype || 'ukendt type', e.cores, to, e.note].filter(Boolean).join(' · ')});
+      });
+      p.meas.forEach(m => lines.push({k:'Måling', v:measTxt(m)}));
+      if (p.note) lines.push({k:'Note', v:p.note});
+      if (p.photos.length) lines.push({k:'Fotos', v:`${p.photos.length}`});
+      const wrapped = lines.map(r => ({k:r.k, v:wrap(r.v, lw - 22, 8.5)}));
+      const hh = 7 + wrapped.reduce((s, r) => s + r.v.length*3.8 + 0.8, 0) + 2;
+      need(Math.min(hh, 60));
+      pdfSym(doc, p.kind, p.status, M + 2.4, y - 1.2, 4.6, g?.color);
+      font(10.5, true); doc.setTextColor(INK); doc.text(p.label || '(uden navn)', M + 6.5, y);
+      const lwid = doc.getTextWidth(p.label || '(uden navn)');
+      font(8.5); doc.setTextColor(DIM); doc.text(head, M + 8.5 + lwid, y);
+      y += 5;
+      for (const r of wrapped){
+        need(r.v.length*3.8 + 1);
+        font(8, true); doc.setTextColor(DIM); doc.text(r.k, M + 6.5, y);
+        font(8.5); doc.setTextColor(INK); doc.text(r.v, M + 22, y);
+        y += r.v.length*3.8 + 0.8;
+      }
+      if (!lines.length){ font(8.5); doc.setTextColor(DIM); doc.text('Ingen kabler eller målinger registreret.', M + 6.5, y); y += 4.6; }
+      y += 1; doc.setDrawColor(LINE); doc.setLineWidth(0.2); doc.line(M, y, 210 - M, y); y += 5;
+    }
+  }
+  if (o.list && P.ff.links.length){
+    progress('Skriver forbindelserne …', 0.85);
+    if (y > 297 - M - 40) newPage('Forbindelser'); else { y += 4; font(13, true); doc.setTextColor(INK); doc.text('Forbindelser', M, y); y += 7; }
+    const cols = [{t:'Fra', w:20}, {t:'Til', w:20}, {t:'Kabeltype', w:24}, {t:'Status', w:20}, {t:'Længde', w:16}, {t:'Målinger og noter', w:lw - 100}];
+    const header = () => { font(8, true); doc.setTextColor(DIM); let x = M; cols.forEach(c => { doc.text(c.t, x, y); x += c.w; }); y += 1.6; doc.setDrawColor(INK); doc.setLineWidth(0.3); doc.line(M, y, 210 - M, y); y += 4; };
+    header();
+    const links = P.ff.links.filter(l => pt(l.a.p) && pt(l.b.p)).sort((a, b) => coll.compare(pt(a.a.p).label||'', pt(b.a.p).label||''));
+    for (const l of links){
+      const a = pt(l.a.p), b = pt(l.b.p), ea = endOf(l.a), eb = endOf(l.b);
+      const len = linkLL(l).reduce((s2, q, i, arr) => i ? s2 + dist(arr[i-1], q) : 0, 0);
+      const ct = ea?.ctype && eb?.ctype && ea.ctype!==eb.ctype ? `${ea.ctype} / ${eb.ctype}` : (ea?.ctype || eb?.ctype || '–');
+      const cells = [`${a.label}\nkabel ${endIndex(a, l.a.e)}`, `${b.label}\nkabel ${endIndex(b, l.b.e)}`, ct, l.state==='bekraeftet'?'Bekræftet':'Formodet', `ca. ${fmtNum(len, 0)} m`,
+        [...(l.meas||[]).map(measTxt), l.note].filter(Boolean).join('\n') || '–'];
+      const wr = cells.map((c, i) => wrap(c, cols[i].w - 2, 8.5));
+      const hh = Math.max(...wr.map(w => w.length)) * 3.8 + 2;
+      if (y + hh > 297 - M - 6){ newPage('Forbindelser (fortsat)'); header(); }
+      let x = M; font(8.5); doc.setTextColor(INK);
+      wr.forEach((w, i) => { if (i===0 || i===1) font(8.5, true); else font(8.5); doc.text(w, x, y); x += cols[i].w; });
+      y += hh; doc.setDrawColor(LINE); doc.setLineWidth(0.2); doc.line(M, y - 3, 210 - M, y - 3); y += 1.5;
+    }
+  }
+
+  /* --- fotos --- */
+  const withPhotos = pts.filter(p => p.photos.length).sort((a, b) => coll.compare(a.label||'', b.label||''));
+  if (o.photos && withPhotos.length){
+    const all = []; withPhotos.forEach(p => p.photos.forEach((id, i) => all.push({p, id, i})));
+    const cw = (210 - 2*M - 6)/2, chh = (297 - 2*M - 14 - 12)/3;
+    let n = 0;
+    for (const it of all){
+      progress(`Lægger fotos ind … ${n+1} af ${all.length}`, 0.88 + 0.1*n/all.length);
+      if (n % 6 === 0) newPage(n ? 'Fotos (fortsat)' : 'Fotos');
+      const r = await dbGet('photos', it.id).catch(() => null);
+      const col = n % 2, rw2 = Math.floor((n % 6)/2), x = M + col*(cw + 6), yy = M + 13 + rw2*(chh + 6);
+      n++;
+      if (!r) continue;
+      const bm = await createImageBitmap(r.data);
+      const k = Math.min(cw/bm.width, (chh - 6)/bm.height), iw = bm.width*k, ih = bm.height*k;
+      doc.addImage(await blobToDataURL(r.data), 'JPEG', x + (cw - iw)/2, yy, iw, ih, undefined, 'FAST');
+      font(8.5, true); doc.setTextColor(INK); doc.text(`${it.p.label} · foto ${it.i+1}`, x, yy + chh - 1.5);
+      font(7.5); doc.setTextColor(DIM); doc.text(fmtTime(r.t), x + cw, yy + chh - 1.5, {align:'right'});
+    }
+  }
+
+  // sidefod
+  const N = doc.getNumberOfPages();
+  for (let i = 1; i <= N; i++){
+    doc.setPage(i);
+    const w = doc.internal.pageSize.getWidth(), hh = doc.internal.pageSize.getHeight();
+    font(7); doc.setTextColor(DIM);
+    doc.text(`${P.name} · Fejlfinder`, M, hh - 5);
+    doc.text(`Side ${i} af ${N}`, w - M, hh - 5, {align:'right'});
+  }
+  progress('Færdig', 1);
+  return doc.output('blob');
+}
+// symboler som vektorer (samme tegning som på kortet), d = diameter i mm
+function pdfSym(doc, kind, status, cx, cy, d, group){
+  const st = STATUS[status] || STATUS.unk, k = d/32, X = u => cx + (u - 16)*k, Y = u => cy + (u - 16)*k;
+  const S = '#15202a';
+  if (group){ doc.setFillColor('#ffffff'); doc.setDrawColor(group); doc.setLineWidth(3*k); doc.circle(cx, cy, 15*k, 'FD'); }
+  doc.setFillColor(st.fill); doc.setDrawColor(S); doc.setLineWidth(2*k); doc.setLineDashPattern([], 0);
+  const X2 = (x1, y1, x2, y2) => doc.line(X(x1), Y(y1), X(x2), Y(y2));
+  switch(kind){
+    case 'lamp': doc.circle(cx, cy, 10.5*k, 'FD'); X2(8.6,8.6,23.4,23.4); X2(23.4,8.6,8.6,23.4); break;
+    case 'wall': doc.circle(X(16), Y(14), 9*k, 'FD'); X2(9.6,7.6,22.4,20.4); X2(22.4,7.6,9.6,20.4); doc.setLineWidth(3*k); X2(5,26.5,27,26.5); break;
+    case 'bollard': doc.roundedRect(X(7), Y(7), 18*k, 18*k, 4*k, 4*k, 'FD'); X2(11,11,21,21); X2(21,11,11,21); break;
+    case 'cab': doc.rect(X(5), Y(9), 22*k, 14*k, 'FD'); X2(5,23,27,9); break;
+    case 'board': doc.rect(X(5), Y(9), 22*k, 14*k, 'FD'); doc.setFillColor(S); doc.triangle(X(5), Y(23), X(27), Y(9), X(27), Y(23), 'F'); break;
+    case 'box': doc.circle(cx, cy, 9*k, 'FD'); doc.setFillColor(S); doc.circle(cx, cy, 4*k, 'F'); break;
+    case 'ctrl': doc.circle(cx, cy, 10*k, 'FD'); X2(16,10,16,16); X2(16,16,20,19); break;
+    default: doc.lines([[11*k,11*k],[-11*k,11*k],[-11*k,-11*k],[11*k,-11*k]], X(16), Y(5), [1,1], 'FD', true);
+  }
 }
 $('#importInput').addEventListener('change', async ev => {
   const f = ev.target.files[0]; if (!f) return;
