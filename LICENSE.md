@@ -2,7 +2,7 @@
 
 Copyright © 2026 Silvert El. Alle rettigheder forbeholdes.
 
-Denne aftale gælder for programmet Silvert El Værktøj (Eltegner, Shelly Dokumentation og Plan-læser), herunder installationsfiler, opdateringer og dokumentation ("Programmet"). Ved at installere eller bruge Programmet accepterer du aftalen.
+Denne aftale gælder for programmet Silvert El Værktøj (Eltegner, Shelly Dokumentation, Fejlfinder og Plan-læser), herunder installationsfiler, opdateringer og dokumentation ("Programmet"). Ved at installere eller bruge Programmet accepterer du aftalen.
 
 ## 1. Hvad du må
 
@@ -28,7 +28,7 @@ Programmet og alle rettigheder til det tilhører Silvert El. Aftalen giver dig e
 
 ## 4. Tredjepartskomponenter
 
-Programmet indeholder open source-komponenter (fx Electron, three.js og PDF.js). De er omfattet af deres egne licenser, som følger med i installationen, og som går forud for denne aftale for de pågældende komponenter. Se listen i [README](README.md#tredjepartskomponenter).
+Programmet indeholder open source-komponenter (fx Electron, three.js, PDF.js og Leaflet). De er omfattet af deres egne licenser, som følger med i installationen, og som går forud for denne aftale for de pågældende komponenter. Se listen i [README](README.md#tredjepartskomponenter).
 
 ## 5. Ingen garanti
 

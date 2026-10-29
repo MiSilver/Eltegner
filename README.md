@@ -1,11 +1,12 @@
 # Silvert El Værktøj
 
-Et Windows-program til elinstallatører med to værktøjer i ét:
+Et Windows-program til elinstallatører med tre værktøjer i ét:
 
 - **Eltegner** – installationstegninger på arkitektens plantegning: symboler, ledninger, grupper, tavle, kabellængder, spændingsfald og kortslutning, titelblok og PDF til aflevering – og en 3D-visning af det færdige resultat.
 - **Shelly Dokumentation** – dokumentation af Shelly-enheder, kabler og scripts, med netværksscanning og rapport.
+- **Fejlfinder** – fejlfinding på ukendte installationer, fx udendørs belysning: punkter og kabler på luftfoto eller egen tegning, status, målinger, fotos og PDF-rapport. Findes også som app til telefonen.
 
-Tegningen og Shelly-dokumentationen for et projekt ligger i **én projektfil (.sel)**, og begge værktøjer kan have samme projekt åbent samtidig.
+Tegningen, Shelly-dokumentationen og fejlfindingen for et projekt ligger i **én projektfil (.sel)**, og værktøjerne kan have samme projekt åbent samtidig.
 
 **[Hent den nyeste version under Releases →](../../releases/latest)**
 
@@ -28,7 +29,7 @@ Tegningen og Shelly-dokumentationen for et projekt ligger i **én projektfil (.s
 
 ### Forside
 - Alle projekter i datamappen med søgning på navn, kunde og adresse.
-- Opret nye projekter, og åbn dem i Eltegner eller Shelly Dokumentation.
+- Opret nye projekter, og åbn dem i Eltegner, Shelly Dokumentation eller Fejlfinder.
 - Dobbeltklik på en `.sel`-fil i Stifinder åbner projektet her.
 
 ### Eltegner
@@ -48,6 +49,14 @@ Tegningen og Shelly-dokumentationen for et projekt ligger i **én projektfil (.s
 - Kabler og ledere, scripts og deres virkning.
 - Rapport som PDF til kunden eller til installatøren.
 - Symboler i Eltegner kan knyttes til Shelly-enheder.
+
+### Fejlfinder
+- **Punkter** på kortet eller en tegning: lamper, master, pullerter, kabelskabe, tavler, samledåser, lysfølere m.m. – sat med GPS eller ved at klikke på kortet.
+- **Kabler** i hvert punkt (kabeltype, ledere i brug, retning) og **forbindelser** mellem punkterne, formodede eller bekræftede.
+- **Status** pr. punkt (virker, lyser ikke, ingen spænding, ukendt), **målinger** (isolation, kontinuitet, spænding, Zs, Ik m.m.), **grupper**, noter og **fotos**.
+- **Kort:** luftfoto, ortofoto fra Datafordeleren (kræver egen gratis API-nøgle), OpenStreetMap – eller din **egen tegning** (PDF/billede), placeret med referencepunkter.
+- **PDF-rapport** med oversigtskort, punktliste, forbindelser og fotos.
+- **På telefonen:** åbn [Fejlfinder](https://misilver.github.io/Eltegner/fejlfinder/) i Chrome og vælg **Føj til startskærm**. Projekterne gemmes på telefonen. Med **Gem som fil (.sel)** får du en fil, som du henter ind i programmet med **Hent fil fra telefonen …** i Fejlfinders projektmenu.
 
 ### Plan-læser (i browseren)
 [Plan-læseren](https://claude.ai/artifact/FKonNdt3YmRsQAEKTyLvek) er en side på claude.ai, hvor Claude læser rum, vægge, døre, vinduer og huller på en plantegning. Du retter det, der ikke passer, gemmer filen og henter den ind i Eltegner med **Importér plan**. Den åbnes også fra programmets forside.
@@ -93,7 +102,10 @@ Tryk **3D** øverst. Drej med musen, zoom med hjulet, og se listen **ting at tje
 ### 6. Aflever
 Udfyld **Titelblok** (kunde, adresse, tegningsnr.), og vælg **Eksportér → PDF med underlag**. Gruppefortegnelsen kan eksporteres til Excel.
 
-### 7. Shelly-dokumentation
+### 7. Fejlfinding
+Klik **Fejlfinder** ud for projektet på forsiden. Sæt punkterne på kortet (eller **Kortlag → Indlæs tegning**), tilføj kabler, forbindelser, status og målinger, og lav rapporten med **Eksportér PDF** i projektmenuen. Ude på stedet kan du bruge telefon-appen og hente filen ind bagefter.
+
+### 8. Shelly-dokumentation
 Klik **Shelly** ud for projektet på forsiden (eller **Åbn i Shelly** i Eltegner). Tilføj enhederne – IP-adressen er nok til at hente model og MAC fra enheden – og lav rapporten under **Rapport**. I Eltegner kan et symbol knyttes til en Shelly-enhed under **Egenskaber**.
 
 Projektet gemmes automatisk, mens du arbejder.
@@ -120,11 +132,11 @@ Projektet gemmes automatisk, mens du arbejder.
 
 ## Data, sikkerhedskopier og opdateringer
 
-- **Projektfiler:** ét projekt = én `.sel`-fil i datamappen under `Projekter` (undermapper er tilladt). Filen indeholder både tegningen med planerne og Shelly-dokumentationen.
+- **Projektfiler:** ét projekt = én `.sel`-fil i datamappen under `Projekter` (undermapper er tilladt). Filen indeholder tegningen med planerne, Shelly-dokumentationen og fejlfindingen.
 - **Automatisk gem:** ændringer gemmes i projektfilen et par sekunder efter, du har rettet.
 - **Sikkerhedskopier:** før en projektfil overskrives, gemmes den forrige udgave i `Sikkerhedskopier` (højst hvert 10. minut, de 10 nyeste). **Filer → Åbn sikkerhedskopier**.
 - **Samtidig brug:** er et projekt åbent på en anden computer, får du besked og kan vælge kun at læse det.
-- **Dine data bliver hos dig:** programmet sender ikke tegninger eller projekter nogen steder hen. Det kontakter kun GitHub for at søge efter opdateringer og dine Shelly-enheder på det lokale netværk. Plan-læseren (i browseren) sender den plantegning, du vælger, til Claude for at læse den.
+- **Dine data bliver hos dig:** programmet sender ikke tegninger eller projekter nogen steder hen. Det kontakter kun GitHub for at søge efter opdateringer, dine Shelly-enheder på det lokale netværk og – i Fejlfinder – kortserverne, der leverer kortbillederne for det område, du ser på. Plan-læseren (i browseren) sender den plantegning, du vælger, til Claude for at læse den.
 
 ---
 
@@ -157,6 +169,10 @@ Programmet bruger disse open source-komponenter. Deres licenser følger med i in
 | [three.js](https://threejs.org/) | 3D-visning | MIT |
 | [PDF.js](https://mozilla.github.io/pdf.js/) | Visning af PDF-planer | Apache 2.0 |
 | [pdf-lib](https://pdf-lib.js.org/) | PDF-eksport i Eltegner | MIT |
-| [jsPDF](https://github.com/parallax/jsPDF) | Rapporter i Shelly Dokumentation | MIT |
+| [jsPDF](https://github.com/parallax/jsPDF) | Rapporter i Shelly Dokumentation og Fejlfinder | MIT |
+| [Leaflet](https://leafletjs.com/) | Kort i Fejlfinder | BSD 2-Clause |
 | [QRCode.js](https://github.com/davidshimjs/qrcodejs) | QR-koder på enhedsetiketter | MIT |
 | [Barlow](https://fonts.google.com/specimen/Barlow), [Inter](https://rsms.me/inter/), [JetBrains Mono](https://www.jetbrains.com/lp/mono/) | Skrifttyper | SIL Open Font License 1.1 |
+| [Roboto](https://fonts.google.com/specimen/Roboto) | Skrifttype i Fejlfinders PDF | Apache 2.0 |
+
+Kortene i Fejlfinder: luftfoto © Esri, Maxar, Earthstar Geographics · ortofoto © GeoDanmark (Klimadatastyrelsen) via Datafordeleren · © [OpenStreetMap](https://www.openstreetmap.org/copyright)-bidragydere (ODbL).
