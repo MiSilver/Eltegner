@@ -834,6 +834,9 @@ textarea{min-height:64px;resize:vertical}
 .stublb{font:700 10px/1 var(--font);color:#111;background:#ffd76ae6;border-radius:3px;padding:2px 3px;white-space:nowrap;transform:translate(-50%,-50%);display:inline-block}
 .lolabels .stublb{display:none}
 .stubh{width:36px;height:36px;display:grid;place-items:center;cursor:grab}
+.stubh.locked{cursor:pointer}
+.stubh.locked i{width:20px;height:20px;display:grid;place-items:center;color:#101820}
+.btn.on{background:var(--fg);color:var(--card);border-color:var(--fg)}
 .stubh i{width:16px;height:16px;border-radius:50%;background:#ffd76a;border:2.5px solid #101820;box-shadow:0 0 0 2px #fff8}
 .vx{width:16px;height:16px;border-radius:50%;background:#fff;border:3px solid var(--accent);box-shadow:0 0 0 1px #0007}
 .gpsdot{width:18px;height:18px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 0 1px #0005,0 0 8px #1a73e8}
@@ -887,7 +890,7 @@ textarea{min-height:64px;resize:vertical}
 </script>
 <script>
 'use strict';
-const APP_VERSION = '0.1.2';
+const APP_VERSION = '0.1.3';
 /* ============================================================
    Konstanter
    ============================================================ */
@@ -1193,9 +1196,10 @@ function renderStubs(){
       const dash = L.polyline([start, tip], {color:'#ffd76a', weight:4, dashArray:'4 4', interactive:false}).addTo(lyStubs);
       const lbl = L.marker(offsetLL(c, brg, len + 14*m), {interactive:false, keyboard:false, icon:L.divIcon({className:'', html:`<span class="stublb">${esc(e.ctype||'?')}</span>`, iconSize:[0,0]})}).addTo(lyStubs);
       // håndtag i enden: træk for at vise retningen
-      const hnd = L.marker(tip, {draggable: mode==='select', keyboard:false, zIndexOffset:-100, title:'Træk for at vise retningen',
-        icon:L.divIcon({className:'', html:'<div class="stubh"><i></i></div>', iconSize:[36,36], iconAnchor:[18,18]})}).addTo(lyStubs);
-      hnd.on('click', ev => { L.DomEvent.stop(ev); if (mode==='select'){ sel = {t:'p', id:p.id}; render(); ensureVisible(c); } });
+      const locked = !!e.locked && e.bearing!=null;
+      const hnd = L.marker(tip, {draggable: mode==='select' && !locked, keyboard:false, zIndexOffset:-100, title: locked ? 'Retningen er låst' : 'Træk for at vise retningen',
+        icon:L.divIcon({className:'', html: locked ? '<div class="stubh locked"><i><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></i></div>' : '<div class="stubh"><i></i></div>', iconSize:[36,36], iconAnchor:[18,18]})}).addTo(lyStubs);
+      hnd.on('click', ev => { L.DomEvent.stop(ev); if (mode==='select'){ if (locked) toast('Retningen er låst. Lås den op under punktets kabler.'); sel = {t:'p', id:p.id}; render(); ensureVisible(c); } });
       hnd.on('dragstart', () => snapshot());
       hnd.on('drag', ev => {
         const ll = ev.target.getLatLng(), to = [ll.lat, ll.lng];
@@ -1493,7 +1497,9 @@ function endCard(p, e, i){
   } else {
     conn = h('div', {class:'conn'}, h('span', {class:'tag warn'}, 'løs ende'),
       e.bearing!=null ? h('span', {}, `går mod ${compass(e.bearing)} (${e.bearing}°)`) : null,
-      h('button', {class:'btn small', onclick:() => { bearingTarget = {p:p.id, e:e.id}; setMode('bearing'); }}, e.bearing==null?'Angiv retning':'Ret retning'),
+      !(e.locked && e.bearing!=null) ? h('button', {class:'btn small', onclick:() => { bearingTarget = {p:p.id, e:e.id}; setMode('bearing'); }}, e.bearing==null?'Angiv retning':'Ret retning') : null,
+      e.bearing!=null ? h('button', {class:'btn small' + (e.locked?' on':''), 'aria-pressed': e.locked?'true':'false', onclick:() => mutate(() => e.locked = !e.locked),
+        html: e.locked ? '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Låst · lås op</span>' : '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg><span>Lås retning</span>'}) : null,
       e.bearing==null ? h('span', {style:'font-size:12px;color:var(--dim)'}, 'eller træk i den gule prik på kortet') : null,
       h('button', {class:'btn small pri', onclick:() => { pend = {a:{p:p.id, e:e.id}, via:[]}; setMode('link'); }}, 'Forbind …'));
   }
