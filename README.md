@@ -50,7 +50,9 @@ Tegningen og Shelly-dokumentationen for et projekt ligger i **én projektfil (.s
 - Symboler i Eltegner kan knyttes til Shelly-enheder.
 
 ### Plan-læser (i browseren)
-Plan-læseren er en side på claude.ai, hvor Claude læser rum, vægge, døre, vinduer og huller på en plantegning. Du retter det, der ikke passer, gemmer filen og henter den ind i Eltegner med **Importér plan**. Den åbnes fra programmets forside.
+[Plan-læseren](https://claude.ai/artifact/FKonNdt3YmRsQAEKTyLvek) er en side på claude.ai, hvor Claude læser rum, vægge, døre, vinduer og huller på en plantegning. Du retter det, der ikke passer, gemmer filen og henter den ind i Eltegner med **Importér plan**. Den åbnes også fra programmets forside.
+
+Det kræver en Claude-konto: læsningen bruger af din egen Claude-konto, og første gang skal du give siden lov til at bruge Claude. Planen sendes kun til Claude for at blive læst og gemmes ikke på siden.
 
 ---
 
@@ -75,7 +77,7 @@ Første gang beder programmet om en **datamappe**. Her gemmes projekter, eksport
 På forsiden: skriv et navn under **Projekter** og tryk **+ Nyt projekt**. Klik derefter **Eltegner** ud for projektet.
 
 ### 3. Læg planen ind
-- **Hurtigst med vægge:** åbn **Plan-læseren** fra forsiden, vælg arkitektens plan, træk en ramme om bygningen og tryk **Læs planen**. Ret det, der ikke passer, og **Gem plan-fil**. I Eltegner: **Importér plan** og vælg filen.
+- **Hurtigst med vægge:** åbn **[Plan-læseren](https://claude.ai/artifact/FKonNdt3YmRsQAEKTyLvek)** (eller fra forsiden), vælg arkitektens plan, træk en ramme om bygningen og tryk **Læs planen**. Ret det, der ikke passer, og **Gem plan-fil**. I Eltegner: **Importér plan** og vælg filen.
 - **Kun planen som underlag:** tryk **Åbn** og vælg PDF eller billede. Tjek målestokken under **Etage**, eller kalibrér med **K** ved at klikke på to punkter med et mål, du kender.
 
 ### 4. Tegn installationen
