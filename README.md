@@ -8,7 +8,8 @@ Et Windows-program til elinstallatører med tre værktøjer i ét:
 
 Tegningen, Shelly-dokumentationen og fejlfindingen for et projekt ligger i **én projektfil (.sel)**, og værktøjerne kan have samme projekt åbent samtidig.
 
-**[Hent den nyeste version under Releases →](../../releases/latest)**
+**[Hent den nyeste version under Releases →](../../releases/latest)**  
+**[Fejlfinder på telefonen →](https://misilver.github.io/Eltegner/fejlfinder/)** (eller scan [QR-koden](#fejlfinder))
 
 ---
 
@@ -57,6 +58,10 @@ Tegningen, Shelly-dokumentationen og fejlfindingen for et projekt ligger i **én
 - **Kort:** luftfoto, ortofoto fra Datafordeleren (kræver egen gratis API-nøgle), OpenStreetMap – eller din **egen tegning** (PDF/billede), placeret med referencepunkter.
 - **PDF-rapport** med oversigtskort, punktliste, forbindelser og fotos.
 - **På telefonen:** åbn [Fejlfinder](https://misilver.github.io/Eltegner/fejlfinder/) i Chrome og vælg **Føj til startskærm**. Projekterne gemmes på telefonen. Med **Gem som fil (.sel)** får du en fil, som du henter ind i programmet med **Hent fil fra telefonen …** i Fejlfinders projektmenu.
+
+<a href="https://misilver.github.io/Eltegner/fejlfinder/"><img src="docs/fejlfinder-qr.svg" alt="QR-kode til Fejlfinder på telefonen" width="180"></a>
+
+Scan koden med telefonens kamera for at åbne Fejlfinder. Koden kan også [hentes som PNG](docs/fejlfinder-qr.png) til udskrift.
 
 ### Plan-læser (i browseren)
 [Plan-læseren](https://claude.ai/artifact/FKonNdt3YmRsQAEKTyLvek) er en side på claude.ai, hvor Claude læser rum, vægge, døre, vinduer og huller på en plantegning. Du retter det, der ikke passer, gemmer filen og henter den ind i Eltegner med **Importér plan**. Den åbnes også fra programmets forside.
