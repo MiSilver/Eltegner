@@ -1,0 +1,45 @@
+name: Fejl
+description: Noget i programmet virker ikke, som det skal
+title: "Fejl: "
+labels: [fejl]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tak fordi du melder fejlen. Alt, du skriver her, kan ses af alle – skriv ikke kundenavne, adresser eller andre personlige oplysninger, og vedhæft ikke projektfiler med kundedata.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Står på forsiden og under Hjælp → Om.
+      placeholder: fx 1.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: del
+    attributes:
+      label: Hvor i programmet?
+      options: [Eltegner, Eltegner – 3D, Shelly Dokumentation, Forside / projekter, Plan-læser, Installation / opdatering, Andet]
+    validations:
+      required: true
+  - type: textarea
+    id: hvad
+    attributes:
+      label: Hvad skete der?
+      description: Og hvad havde du forventet?
+    validations:
+      required: true
+  - type: textarea
+    id: trin
+    attributes:
+      label: Sådan sker det
+      description: Trin for trin, så fejlen kan gentages.
+      placeholder: |
+        1. Åbn …
+        2. Klik på …
+        3. …
+  - type: textarea
+    id: billeder
+    attributes:
+      label: Skærmbilleder
+      description: Træk billeder herind (husk at skjule personlige oplysninger).

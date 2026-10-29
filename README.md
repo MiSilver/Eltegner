@@ -18,6 +18,7 @@ Tegningen og Shelly-dokumentationen for et projekt ligger i **én projektfil (.s
 - [Quick-guide](#quick-guide)
 - [Tastaturgenveje i Eltegner](#tastaturgenveje-i-eltegner)
 - [Data, sikkerhedskopier og opdateringer](#data-sikkerhedskopier-og-opdateringer)
+- [Fejl og forslag](#fejl-og-forslag)
 - [Licens](#licens)
 - [Tredjepartskomponenter](#tredjepartskomponenter)
 
@@ -125,11 +126,19 @@ Projektet gemmes automatisk, mens du arbejder.
 
 ---
 
+## Fejl og forslag
+
+Har du fundet en fejl eller en idé til en forbedring? Opret en sag under **[Issues → New issue](../../issues/new/choose)** og vælg **Fejl** eller **Forslag**. Det kræver en (gratis) GitHub-konto.
+
+Sagerne kan ses af alle, så skriv ikke kundenavne, adresser eller andre personlige oplysninger, og vedhæft ikke projektfiler med kundedata.
+
+---
+
 ## Licens
 
 Copyright © 2026 Silvert El. Alle rettigheder forbeholdes.
 
-Programmet stilles gratis til rådighed som det er, uden garanti af nogen art. Beregninger af kabellængder, spændingsfald og kortslutning er en hjælp og erstatter ikke installatørens egen kontrol efter gældende regler.
+Programmet er gratis at bruge – både privat og i virksomheder – på de vilkår, der står i **[licensaftalen](LICENSE.md)**. Kort fortalt: du må installere, bruge og dele den uændrede installationsfil, men ikke sælge, ændre eller videreudvikle Programmet. Det leveres uden garanti, og beregningerne erstatter ikke installatørens egen kontrol efter gældende regler.
 
 Kildekoden er ikke offentlig.
 

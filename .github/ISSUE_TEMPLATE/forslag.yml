@@ -1,0 +1,28 @@
+name: Forslag
+description: Idé til en ny funktion eller en forbedring
+title: "Forslag: "
+labels: [forslag]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tak for forslaget. Alt, du skriver her, kan ses af alle – skriv ikke kundenavne, adresser eller andre personlige oplysninger.
+  - type: dropdown
+    id: del
+    attributes:
+      label: Hvilken del af programmet?
+      options: [Eltegner, Eltegner – 3D, Shelly Dokumentation, Forside / projekter, Plan-læser, Andet]
+    validations:
+      required: true
+  - type: textarea
+    id: behov
+    attributes:
+      label: Hvad mangler du?
+      description: Beskriv opgaven eller situationen, hvor du savner noget.
+    validations:
+      required: true
+  - type: textarea
+    id: ide
+    attributes:
+      label: Hvordan kunne det virke?
+      description: Gerne med et eksempel eller en skitse.
