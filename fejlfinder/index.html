@@ -905,7 +905,7 @@ textarea{min-height:64px;resize:vertical}
 </script>
 <script>
 'use strict';
-const APP_VERSION = '0.4.0';
+const APP_VERSION = '0.4.1';
 /* ============================================================
    Konstanter
    ============================================================ */
@@ -1130,20 +1130,63 @@ const CachedTiles = L.TileLayer.extend({
     dbGet('tiles', key).then(b => {
       if (b){ obj = URL.createObjectURL(b); img.src = obj; return; }
       if (!navigator.onLine){ img.src = url; return; }
-      fetch(url, {mode:'cors'}).then(r => r.ok ? r.blob() : Promise.reject(r.status)).then(b => {
-        if (!/^image\//.test(b.type)) throw 'type';
+      const id = this.options.cacheId;
+      fetch(url, {mode:'cors'}).then(r => r.ok ? r.blob() : Promise.reject({http:r.status})).then(b => {
+        if (!/^image\//.test(b.type)) throw {http:'type'};
         dbPut('tiles', b, key).catch(()=>{});
         obj = URL.createObjectURL(b); img.src = obj;
-      }).catch(() => { img.src = url; });
+      }).catch(e => {
+        // Svar med fejl: vis ikke serverens fejlbillede, men sig hvad der er galt (én gang pr. kort og fejl)
+        if (e && e.http != null){ tileFail(id, e.http); done(new Error('HTTP ' + e.http), img); return; }
+        // Serveren tillader ikke siden at læse svaret (CORS) eller ingen forbindelse: lad browseren hente billedet
+        img.onerror = ev => { tileFail(id, 0); done(ev, img); };
+        img.src = url;
+      });
     }).catch(() => { img.src = url; });
     return img;
   }
 });
+// Fejl fra kortserveren: én besked pr. kort og fejltype, indtil kortet vælges igen
+const tileFails = new Set();
+function tileMsg(id, s){
+  const n = BASES[id]?.name || 'kortet';
+  if (id === 'dfd' && (s === 401 || s === 403)) return `Datafordeleren afviser API-nøglen (fejl ${s}). Tjek nøglen under Kortlag → Indstillinger.`;
+  if (id === 'dfd' && s === 'type') return 'Datafordeleren sendte ikke et billede. Tjek API-nøglen under Kortlag → Indstillinger.';
+  if (id === 'osm' && s === 403) return 'OpenStreetMap afviser kortbillederne (fejl 403). Vælg et andet kort under Kortlag.';
+  if (s === 0) return `Kunne ikke hente ${n}. Tjek internetforbindelsen${id === 'dfd' ? ' og API-nøglen' : ''}.`;
+  if (s === 404 || s === 400) return null;   // uden for kortets område eller zoom
+  return `${n} svarer med fejl ${s}. Prøv igen senere, eller vælg et andet kort.`;
+}
+function tileFail(id, s){
+  const k = id + ':' + s; if (tileFails.has(k) || id !== baseId) return;
+  tileFails.add(k); const m = tileMsg(id, s); if (m) toast(m, 7000);
+}
+// Prøv API-nøglen på ét kortbillede over Danmark
+async function testDfdKey(k){
+  const z = 10, lat = 55.95, lng = 10.6, n = 2 ** z, r = lat * Math.PI / 180;
+  const t = {z, x: Math.floor((lng + 180) / 360 * n), y: Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n)};
+  const url = L.Util.template(BASES.dfd.url.replace('{key}', encodeURIComponent(k)), t);
+  try {
+    const res = await fetch(url, {mode:'cors', cache:'no-store'});
+    if (res.ok){
+      const b = await res.blob();
+      if (/^image\//.test(b.type)) return {ok:true, msg:'Nøglen virker – Datafordeleren sender luftfotos.'};
+      return {ok:false, msg:'Datafordeleren svarede, men ikke med et billede: ' + (await b.text()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160)};
+    }
+    const txt = (await res.text().catch(() => '')).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+    const why = res.status === 401 || res.status === 403 ? 'Nøglen blev afvist' : 'Datafordeleren svarede med en fejl';
+    return {ok:false, msg:`${why} (fejl ${res.status})${txt ? ': ' + txt : ''}. Brug API-nøglen fra et IT-system på datafordeler.dk.`};
+  } catch {
+    // Kan svaret ikke læses (CORS), prøves det som et almindeligt billede
+    const ok = await new Promise(res => { const i = new Image(); i.onload = () => res(true); i.onerror = () => res(false); i.src = url; });
+    return ok ? {ok:true, msg:'Nøglen virker – Datafordeleren sender luftfotos.'} : {ok:false, msg:'Datafordeleren kunne ikke nås, eller nøglen blev afvist. Tjek internetforbindelsen og nøglen.'};
+  }
+}
 let baseLayer = null, baseId = ls.get('base','esri');
 function tileUrl(id){ return BASES[id].url.replace('{key}', encodeURIComponent(ls.get('dfdKey',''))); }
 function setBase(id){
   if (BASES[id]?.needsKey && !ls.get('dfdKey','')){ toast('Indtast en API-nøgle fra Datafordeleren under Indstillinger'); id = 'esri'; }
-  baseId = id; ls.set('base', id);
+  baseId = id; ls.set('base', id); tileFails.clear();
   if (baseLayer) map.removeLayer(baseLayer);
   baseLayer = null;
   const B = BASES[id];
@@ -2564,14 +2607,25 @@ $('#layerBtn').addEventListener('click', () => dialog((d, close) => {
 function settingsDialog(){
   return dialog((d, close) => {
     const key = h('input', {type:'password', placeholder:'API-nøgle', value:ls.get('dfdKey',''), autocomplete:'off'});
+    const msg = h('p', {style:'font-size:14px;margin:6px 0 0;min-height:1.4em', role:'status'});
     d.append(h('h2', {}, 'Indstillinger'),
       h('b', {}, 'Luftfoto fra Datafordeleren'),
       h('p', {style:'font-size:14px'}, 'Danske luftfotos (GeoDanmark, forår) er gratis. Opret en bruger og et IT-system med en API-nøgle på datafordeler.dk og indsæt nøglen her. Nøglen gemmes kun på denne enhed.'),
-      key,
-      h('div', {class:'acts'}, h('button', {class:'btn', onclick:() => close()}, 'Annullér'), h('button', {class:'btn pri', onclick:() => {
-        ls.set('dfdKey', key.value.trim()); close();
-        if (key.value.trim()){ setBase('dfd'); toast('Luftfoto fra Datafordeleren valgt'); } else if (baseId==='dfd') setBase('esri');
-      }}, 'Gem')));
+      key, msg,
+      h('div', {class:'acts'},
+        h('button', {class:'btn', style:'margin-right:auto', onclick: async () => {
+          const k = key.value.trim(); if (!k){ msg.textContent = 'Indsæt en API-nøgle først.'; return; }
+          msg.textContent = 'Prøver nøglen …'; msg.style.color = '';
+          const r = await testDfdKey(k); msg.textContent = r.msg; msg.style.color = r.ok ? 'var(--ok)' : 'var(--off)';
+        }}, 'Prøv nøglen'),
+        h('button', {class:'btn', onclick:() => close()}, 'Annullér'), h('button', {class:'btn pri', onclick: async () => {
+          const k = key.value.trim();
+          ls.set('dfdKey', k); close();
+          if (!k){ if (baseId==='dfd') setBase('esri'); return; }
+          setBase('dfd');
+          const r = await testDfdKey(k);
+          toast(r.ok ? 'Luftfoto fra Datafordeleren valgt' : r.msg, r.ok ? 2600 : 9000);
+        }}, 'Gem')));
   });
 }
 function tilesInView(zmax){
