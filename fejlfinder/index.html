@@ -905,7 +905,7 @@ textarea{min-height:64px;resize:vertical}
 </script>
 <script>
 'use strict';
-const APP_VERSION = '0.4.1';
+const APP_VERSION = '0.4.2';
 /* ============================================================
    Konstanter
    ============================================================ */
@@ -1155,6 +1155,7 @@ function tileMsg(id, s){
   if (id === 'osm' && s === 403) return 'OpenStreetMap afviser kortbillederne (fejl 403). Vælg et andet kort under Kortlag.';
   if (s === 0) return `Kunne ikke hente ${n}. Tjek internetforbindelsen${id === 'dfd' ? ' og API-nøglen' : ''}.`;
   if (s === 404 || s === 400) return null;   // uden for kortets område eller zoom
+  if (s >= 500) return `Fejl hos ${id === 'dfd' ? 'Datafordeleren' : n} (fejl ${s}). Prøv igen senere, eller vælg et andet kort under Kortlag.`;
   return `${n} svarer med fejl ${s}. Prøv igen senere, eller vælg et andet kort.`;
 }
 function tileFail(id, s){
@@ -1174,8 +1175,11 @@ async function testDfdKey(k){
       return {ok:false, msg:'Datafordeleren svarede, men ikke med et billede: ' + (await b.text()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160)};
     }
     const txt = (await res.text().catch(() => '')).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
-    const why = res.status === 401 || res.status === 403 ? 'Nøglen blev afvist' : 'Datafordeleren svarede med en fejl';
-    return {ok:false, msg:`${why} (fejl ${res.status})${txt ? ': ' + txt : ''}. Brug API-nøglen fra et IT-system på datafordeler.dk.`};
+    if (res.status === 401 || res.status === 403)
+      return {ok:false, msg:`Nøglen blev afvist (fejl ${res.status})${txt ? ': ' + txt : ''}. Brug API-nøglen fra et IT-system på datafordeler.dk.`};
+    if (res.status >= 500)
+      return {ok:false, msg:`Fejl hos Datafordeleren (fejl ${res.status}) – det er ikke nøglen. Prøv igen senere; en ny nøgle kan være op til en time om at virke.`};
+    return {ok:false, msg:`Datafordeleren svarede med en fejl (fejl ${res.status})${txt ? ': ' + txt : ''}.`};
   } catch {
     // Kan svaret ikke læses (CORS), prøves det som et almindeligt billede
     const ok = await new Promise(res => { const i = new Image(); i.onload = () => res(true); i.onerror = () => res(false); i.src = url; });
